@@ -8,6 +8,7 @@
 
 ### :sparkles: New features & Enhancements
 
+- Add experimental **HTML Mode** to the workspace top-right toolbar, next to View Mode. Opens the current file's page in a sandboxed iframe rendered as HTML+CSS (via the in-tree `@penpot/html-converter` package), with a side panel for inspecting the generated style declarations, applied design tokens, and image assets. Hidden by default; enable with `penpotFlags = "enable-html-mode"` (see `docs/technical-guide/html-mode.md`).
 - Show a read-only W × H size badge below the bounding box of the current selection (by @bittoby) [Github #9205](https://github.com/penpot/penpot/issues/9205)
 - Expose `variants` retrieval on `LibraryComponent` via `isVariant()` type guard in plugin API [Github #9185](https://github.com/penpot/penpot/issues/9185)
 - Show alpha percentage next to library color values to distinguish colors that differ only in opacity (by @rockchris099) [Github #6328](https://github.com/penpot/penpot/issues/6328)

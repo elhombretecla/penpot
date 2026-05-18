@@ -1,0 +1,41 @@
+{
+  "name": "@penpot/html-converter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vendored snapshot of penpot-tools' Penpot-to-HTML converter, adapted for use inside the Penpot frontend.",
+  "license": "ISC",
+  "type": "module",
+  "main": "./dist/converter/index.js",
+  "types": "./dist/converter/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/converter/index.d.ts",
+      "default": "./dist/converter/index.js"
+    },
+    "./types": {
+      "types": "./dist/penpot.types.d.ts",
+      "default": "./dist/penpot.types.js"
+    },
+    "./converter-types": {
+      "types": "./dist/converter/types.d.ts",
+      "default": "./dist/converter/types.js"
+    },
+    "./tokens": {
+      "types": "./dist/converter/tokens.d.ts",
+      "default": "./dist/converter/tokens.js"
+    },
+    "./decl": {
+      "types": "./dist/converter/decl.d.ts",
+      "default": "./dist/converter/decl.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "VERSION",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc"
+  }
+}

@@ -165,7 +165,11 @@
 
     :mcp
     :background-blur
-    :stroke-path})
+    :stroke-path
+
+    ;; Enables the HTML Mode entry point in the workspace top-right toolbar
+    ;; and the `html` section in the viewer route. Experimental.
+    :html-mode})
 
 (def all-flags
   (set/union email login varia))

@@ -8,6 +8,7 @@
   (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data.macros :as dm]
+   [app.config :as cf]
    [app.main.data.modal :as modal]
    [app.main.data.shortcuts :as scd]
    [app.main.data.viewer :as dv]
@@ -348,6 +349,19 @@
                   :class (stl/css-case :mode-zone-btn true
                                        :selected (= section :inspect))
                   :title (tr "viewer.header.inspect-section" (sc/get-tooltip :open-inspect))}
+         deprecated-icon/code])
+
+      (when (and (contains? cf/flags :html-mode)
+                 (or (:in-team permissions)
+                     (and (= (:type permissions) :share-link)
+                          (= (:who-inspect permissions) "all"))))
+        [:button {:on-click navigate
+                  :data-value "html"
+                  :class (stl/css-case :mode-zone-btn true
+                                       :selected (= section :html))
+                  :title (tr "viewer.header.html-section")
+                  :aria-label (tr "viewer.header.html-section")
+                  :aria-pressed (= section :html)}
          deprecated-icon/code])]
 
      [:& header-options {:section section

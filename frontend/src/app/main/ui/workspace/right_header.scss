@@ -224,7 +224,8 @@
 }
 
 .share-btn,
-.viewer-btn {
+.viewer-btn,
+.html-mode-btn {
   @extend %button-tertiary;
 
   border-radius: deprecated.$br-8;

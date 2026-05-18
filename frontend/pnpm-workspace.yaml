@@ -4,6 +4,7 @@ packages:
   - "packages/tokenscript"
   - "text-editor"
   - "packages/ui"
+  - "vendor/penpot-html-converter"
 
 patchedDependencies:
   '@zip.js/zip.js@2.8.26': patches/@zip.js__zip.js@2.8.26.patch

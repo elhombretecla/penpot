@@ -28,6 +28,7 @@
    [app.main.ui.modal :refer [modal-container*]]
    [app.main.ui.viewer.comments :refer [comments-layer comments-sidebar*]]
    [app.main.ui.viewer.header :as header]
+   [app.main.ui.viewer.html-mode :refer [html-mode-section*]]
    [app.main.ui.viewer.inspect :as inspect]
    [app.main.ui.viewer.interactions :as interactions]
    [app.main.ui.viewer.login]
@@ -287,6 +288,10 @@
                           (and (true? (:is-logged permissions))
                                (= (:who-comment permissions) "all"))))
                  (and (= section :inspect)
+                      (or (:can-edit permissions)
+                          (and (true? (:is-logged permissions))
+                               (= (:who-inspect permissions) "all"))))
+                 (and (= section :html)
                       (or (:can-edit permissions)
                           (and (true? (:is-logged permissions))
                                (= (:who-inspect permissions) "all")))))
@@ -567,6 +572,9 @@
                                                      :fullscreen fullscreen?)
                                 :on-click click-on-screen}
        (cond
+         (= section :html)
+         [:> html-mode-section* {:page page :file file}]
+
          (empty? frames)
          [:section {:class (stl/css :empty-state)}
           [:span (tr "viewer.empty-state")]]

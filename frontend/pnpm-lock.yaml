@@ -16,6 +16,9 @@ importers:
       '@penpot/draft-js':
         specifier: workspace:./packages/draft-js
         version: link:packages/draft-js
+      '@penpot/html-converter':
+        specifier: workspace:./vendor/penpot-html-converter
+        version: link:vendor/penpot-html-converter
       '@penpot/mousetrap':
         specifier: workspace:./packages/mousetrap
         version: link:packages/mousetrap
@@ -377,6 +380,8 @@ importers:
       vitest:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@25.2.1)(@vitest/browser@1.6.1)(@vitest/ui@1.6.1)(jsdom@27.4.0(canvas@3.2.1))(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)
+
+  vendor/penpot-html-converter: {}
 
 packages:
 

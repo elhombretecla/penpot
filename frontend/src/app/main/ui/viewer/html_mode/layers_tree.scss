@@ -1,0 +1,124 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) KALEIDOS INC
+
+@use "ds/typography.scss" as *;
+@use "ds/_sizes.scss" as *;
+@use "ds/_borders.scss" as *;
+@use "ds/_utils.scss" as *;
+
+// ---------------------------------------------------------------------------
+// Shell (mirrors Inspect's `.settings-bar-left`)
+
+.tree {
+  flex: none;
+  inline-size: $sz-252;
+  min-inline-size: $sz-252;
+  block-size: 100%;
+  background-color: var(--panel-background-color);
+  border-inline-end: 1px solid var(--panel-border-color);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-scroll {
+  block-size: 100%;
+  overflow-y: auto;
+  padding-block: var(--sp-s);
+}
+
+// ---------------------------------------------------------------------------
+// Single row (mirrors workspace's `.layer-row`)
+//
+// Foreground colours mirror the workspace's `.element-name` /
+// `.element-name.type-comp` rules so component layers stand out in
+// the same way as in the workspace sidebar:
+// - `--element-name-color` for regular shapes
+// - `--element-name-comp-color` for component instance heads
+// Both ultimately resolve to the same theme tokens
+// (`--layer-row-foreground-color` / `--layer-row-component-foreground-color`).
+
+.layer-row {
+  --layer-indentation-size: var(--sp-l);
+  --layer-background-color: transparent;
+  --layer-foreground-color: var(--element-name-color, var(--layer-row-foreground-color));
+  --icon-foreground-color: var(--layer-foreground-color);
+
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  inline-size: 100%;
+  block-size: $sz-28;
+  cursor: pointer;
+  background-color: var(--layer-background-color);
+  color: var(--layer-foreground-color);
+
+  &:hover {
+    --layer-background-color: var(--color-background-secondary);
+  }
+
+  &.layer-row-component {
+    --layer-foreground-color: var(--element-name-comp-color, var(--layer-row-component-foreground-color));
+  }
+
+  &.selected {
+    --layer-background-color: var(--color-background-quaternary);
+    --layer-foreground-color: var(--layer-row-foreground-color-selected, var(--color-accent-tertiary));
+    --icon-foreground-color: var(--layer-row-foreground-color-selected, var(--color-accent-tertiary));
+  }
+}
+
+.tab-indentation {
+  flex: none;
+  inline-size: calc(var(--depth, 0) * var(--layer-indentation-size));
+}
+
+.layer-row-inner {
+  display: grid;
+  grid-template-columns: $sz-16 $sz-24 1fr;
+  align-items: center;
+  gap: var(--sp-xs);
+  flex: 1;
+  min-inline-size: 0;
+  padding-inline-end: var(--sp-s);
+}
+
+.toggle-button {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  inline-size: $sz-16;
+  block-size: $sz-16;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  color: var(--icon-foreground-color);
+  cursor: pointer;
+
+  &.empty {
+    cursor: default;
+    visibility: hidden;
+  }
+}
+
+.layer-icon {
+  --icon-stroke-color: var(--icon-foreground-color);
+
+  display: grid;
+  place-items: center;
+  inline-size: $sz-24;
+  block-size: $sz-24;
+}
+
+.layer-name {
+  @include use-typography("body-small");
+
+  color: var(--layer-foreground-color);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}

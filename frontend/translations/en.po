@@ -5634,6 +5634,10 @@ msgstr "Edit in workspace"
 msgid "viewer.header.fullscreen"
 msgstr "Full Screen"
 
+#: src/app/main/ui/viewer/header.cljs:357
+msgid "viewer.header.html-section"
+msgstr "HTML mode"
+
 #: src/app/main/ui/viewer/header.cljs:346
 msgid "viewer.header.inspect-section"
 msgstr "Inspect (%s)"
@@ -5661,6 +5665,154 @@ msgstr "Show interactions on click"
 #: src/app/main/ui/viewer/header.cljs:233
 msgid "viewer.header.sitemap"
 msgstr "Sitemap"
+
+#: src/app/main/ui/viewer/html_mode.cljs:113
+msgid "viewer.html-mode.error"
+msgstr "HTML preview failed"
+
+#: src/app/main/ui/viewer/html_mode.cljs:120
+msgid "viewer.html-mode.iframe-title"
+msgstr "HTML preview of the current page"
+
+#: src/app/main/ui/viewer/html_mode.cljs:108
+msgid "viewer.html-mode.loading"
+msgstr "Building HTML preview…"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.aria"
+msgstr "HTML Mode inspector"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.assets.empty"
+msgstr "No image assets used."
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.assets.title"
+msgstr "Assets"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.assets.download"
+msgstr "Download asset"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.box-model.aria"
+msgstr "Box model"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.box-model.border"
+msgstr "border"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.box-model.margin"
+msgstr "margin"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.box-model.padding"
+msgstr "padding"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.box-model.title"
+msgstr "Box model"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.component.title"
+msgstr "Component"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.export.label"
+msgstr "Export"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.export.title"
+msgstr "Export layer as PNG"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.format.aria"
+msgstr "Change color format and length unit"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.format.color"
+msgstr "Color"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.format.unit"
+msgstr "Unit"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.copied"
+msgstr "Copied!"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.copy"
+msgstr "Copy"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.empty.description"
+msgstr "Click a layer in the preview to inspect its CSS."
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.empty.title"
+msgstr "No layer selected"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.layer-info"
+msgstr "Layer info"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.section.layout"
+msgstr "Layout"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.section.other"
+msgstr "Other"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.section.position"
+msgstr "Position"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.section.size"
+msgstr "Size"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.section.typography"
+msgstr "Typography"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.section.visual"
+msgstr "Visual"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.style.empty"
+msgstr "This layer has no inline styles."
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.style.title"
+msgstr "Style"
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.tokens.empty"
+msgstr "No design tokens applied."
+
+#: src/app/main/ui/viewer/html_mode/sidebar.cljs
+msgid "viewer.html-mode.sidebar.tokens.title"
+msgstr "Tokens"
+
+#: src/app/main/ui/viewer/html_mode/layers_tree.cljs
+msgid "viewer.html-mode.tree.aria"
+msgstr "Layers tree"
+
+#: src/app/main/ui/viewer/html_mode/layers_tree.cljs
+msgid "viewer.html-mode.tree.toggle"
+msgstr "Toggle children"
+
+#: src/app/main/ui/viewer/html_mode.cljs
+msgid "viewer.html-mode.toolbar.refresh"
+msgstr "Refresh"
+
+#: src/app/main/ui/viewer/html_mode.cljs
+msgid "viewer.html-mode.toolbar.updated-at"
+msgstr "Updated just now"
 
 #: src/app/main/ui/dashboard/team.cljs:1203
 msgid "webhooks.last-delivery.success"
@@ -5995,6 +6147,10 @@ msgstr "Linear gradient"
 #: src/app/util/color.cljs:35
 msgid "workspace.gradients.radial"
 msgstr "Radial gradient"
+
+#: src/app/main/ui/workspace/right_header.cljs:251
+msgid "workspace.header.html-mode"
+msgstr "HTML mode"
 
 #: src/app/main/ui/workspace/main_menu.cljs:274
 msgid "workspace.header.menu.disable-dynamic-alignment"

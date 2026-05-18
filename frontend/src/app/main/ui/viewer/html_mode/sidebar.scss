@@ -1,0 +1,665 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) KALEIDOS INC
+
+@use "ds/typography.scss" as *;
+@use "ds/_sizes.scss" as *;
+@use "ds/_borders.scss" as *;
+@use "refactor/common-refactor.scss" as deprecated;
+
+// The same low-emphasis fallback the Inspect's `style-box` relies on,
+// declared here too so HTML Mode renders the same panel background
+// whether or not Inspect has been rendered first in the same session.
+:global(.light) {
+  --low-emphasis-background: #fafafa;
+}
+
+:global(.default) {
+  --low-emphasis-background: #121214;
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar shell (mirrors `app.main.ui.inspect.right-sidebar/settings-bar-right`)
+
+.sidebar {
+  flex: none;
+  inline-size: $sz-352;
+  min-inline-size: $sz-252;
+  block-size: 100%;
+  background-color: var(--panel-background-color);
+  border-inline-start: 1px solid var(--panel-border-color);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tool-windows {
+  block-size: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: var(--sp-s);
+  min-block-size: 0;
+}
+
+// ---------------------------------------------------------------------------
+// Shape info header (tag + name + export action)
+
+.shape-info {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-s);
+  padding: var(--sp-m);
+}
+
+.shape-info-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  min-inline-size: 0;
+  flex: 1;
+}
+
+.shape-tag {
+  --icon-stroke-color: var(--color-foreground-secondary);
+
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  color: var(--color-foreground-secondary);
+
+  @include use-typography("body-small");
+}
+
+.shape-tag-icon {
+  --icon-stroke-color: var(--color-foreground-secondary);
+}
+
+.layer-title {
+  @include use-typography("headline-medium");
+  @include deprecated.text-ellipsis;
+
+  color: var(--color-foreground-primary);
+}
+
+.export-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  block-size: $sz-32;
+  padding-inline: var(--sp-s);
+  border: 1px solid var(--color-background-quaternary);
+  border-radius: $br-8;
+  background: var(--color-background-tertiary);
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  flex: none;
+
+  @include use-typography("body-small");
+
+  --icon-stroke-color: var(--color-foreground-secondary);
+
+  &:hover {
+    background: var(--color-background-quaternary);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scrollable section list
+
+.inspect-content {
+  overflow-y: auto;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+// ---------------------------------------------------------------------------
+// Section shell (mirrors `app.main.ui.inspect.styles.style-box`)
+
+.section {
+  --title-gap: var(--sp-xs);
+  --title-padding: var(--sp-s);
+  --title-color: var(--color-foreground-secondary);
+  --arrow-color: var(--color-foreground-secondary);
+  --box-border-color: var(--color-background-primary);
+
+  padding-block: var(--sp-s);
+  padding-inline: var(--sp-m);
+  background-color: var(--low-emphasis-background);
+  border-block-end: 2px solid var(--box-border-color);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--title-gap);
+  min-block-size: $sz-32;
+}
+
+.styles-header {
+  justify-content: space-between;
+}
+
+.styles-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+}
+
+.disclosure-button {
+  display: grid;
+  place-items: center;
+  color: var(--arrow-color);
+  appearance: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  border: none;
+  cursor: pointer;
+}
+
+.disclosure-icon {
+  --icon-stroke-color: var(--arrow-color);
+}
+
+// ---------------------------------------------------------------------------
+// Component panel
+
+.section-component {
+  // The icon and "COMPONENT" label adopt the same accent the workspace
+  // uses for component layers, so the header reads as a sibling of the
+  // left-sidebar's component-coloured rows.
+  --component-accent: var(--layer-row-component-foreground-color, var(--color-accent-secondary));
+}
+
+.component-header {
+  gap: var(--sp-xs);
+  color: var(--component-accent);
+
+  .section-title {
+    color: var(--component-accent);
+  }
+}
+
+.component-icon {
+  --icon-stroke-color: var(--component-accent);
+}
+
+.component-content {
+  padding: var(--sp-s);
+  background-color: var(--color-background-primary);
+  border-radius: $br-6;
+  gap: var(--sp-s);
+}
+
+.component-name {
+  @include use-typography("headline-small");
+
+  margin: 0;
+  color: var(--color-foreground-primary);
+}
+
+.component-properties {
+  display: grid;
+  grid-template-columns: minmax(min-content, $sz-88) 1fr;
+  gap: var(--sp-xs) var(--sp-m);
+  margin: 0;
+  padding: 0;
+}
+
+.component-property-row {
+  display: contents;
+}
+
+.component-property-name {
+  color: var(--color-foreground-secondary);
+
+  @include use-typography("code-font");
+}
+
+.component-property-value {
+  margin: 0;
+  color: var(--color-foreground-primary);
+
+  @include use-typography("code-font");
+}
+
+.section-title {
+  @include use-typography("body-small");
+
+  flex: 1;
+  color: var(--title-color);
+  padding-block: var(--title-padding);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.section-action {
+  color: var(--color-foreground-secondary);
+
+  @include use-typography("body-small");
+}
+
+.section-content {
+  padding-block: var(--sp-xs) var(--sp-s);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+}
+
+// ---------------------------------------------------------------------------
+// Box model diagram (nested margin > border > padding > content)
+
+.box-model {
+  display: grid;
+  line-height: 1;
+  color: var(--color-foreground-primary);
+
+  @include use-typography("body-small");
+}
+
+.box-margin,
+.box-border,
+.box-padding {
+  position: relative;
+  display: grid;
+  grid-template-columns: $sz-32 1fr $sz-32;
+  grid-template-rows: $sz-24 1fr $sz-24;
+  place-items: center;
+  border-radius: $br-4;
+  padding: var(--sp-xs);
+}
+
+.box-margin {
+  background: color-mix(in srgb, #f4b67a 22%, transparent);
+  border: 1px solid color-mix(in srgb, #f4b67a 38%, transparent);
+}
+
+.box-border {
+  grid-column: 2;
+  grid-row: 2;
+  inline-size: 100%;
+  background: color-mix(in srgb, #f6db77 28%, transparent);
+  border: 1px solid color-mix(in srgb, #f6db77 45%, transparent);
+}
+
+.box-padding {
+  grid-column: 2;
+  grid-row: 2;
+  inline-size: 100%;
+  background: color-mix(in srgb, #9bd8a0 28%, transparent);
+  border: 1px solid color-mix(in srgb, #9bd8a0 45%, transparent);
+}
+
+.box-content {
+  grid-column: 2;
+  grid-row: 2;
+  inline-size: 100%;
+  min-block-size: $sz-48;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, #93b5f4 32%, transparent);
+  border: 1px solid color-mix(in srgb, #93b5f4 48%, transparent);
+  border-radius: $br-4;
+  color: var(--color-foreground-primary);
+
+  @include use-typography("body-medium");
+
+  font-weight: 600;
+}
+
+.box-tag {
+  position: absolute;
+  inset-block-start: var(--sp-xxs);
+  inset-inline-start: var(--sp-xs);
+  color: var(--color-foreground-secondary);
+
+  @include use-typography("body-small");
+}
+
+.box-cell {
+  color: var(--color-foreground-primary);
+
+  @include use-typography("body-small");
+}
+
+.box-cell-top {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.box-cell-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.box-cell-bottom {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.box-cell-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+// ---------------------------------------------------------------------------
+// Format picker (color profile + length unit)
+
+.format-picker-wrapper {
+  position: relative;
+}
+
+.format-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  block-size: $sz-24;
+  padding-inline: var(--sp-xs);
+  border: none;
+  background: transparent;
+  border-radius: $br-6;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+
+  @include use-typography("body-small");
+
+  --icon-stroke-color: var(--color-foreground-secondary);
+
+  &:hover {
+    background: var(--color-background-tertiary);
+  }
+}
+
+.format-picker-icon {
+  --icon-stroke-color: var(--color-foreground-secondary);
+}
+
+.format-picker-tag {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.format-picker-sep {
+  color: var(--color-foreground-secondary);
+}
+
+.format-popover {
+  position: absolute;
+  inset-block-start: calc(100% + var(--sp-xxs));
+  inset-inline-end: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+  padding: var(--sp-s);
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-background-quaternary);
+  border-radius: $br-8;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.16);
+  z-index: 10;
+  min-inline-size: $sz-252;
+}
+
+.segmented-row {
+  display: grid;
+  grid-template-columns: $sz-48 1fr;
+  align-items: center;
+  gap: var(--sp-s);
+}
+
+.segmented-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-foreground-secondary);
+
+  @include use-typography("body-small");
+
+  font-weight: 600;
+}
+
+.segmented-options {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xxs);
+  padding: var(--sp-xxs);
+  background: var(--color-background-primary);
+  border-radius: $br-6;
+}
+
+.segmented-option {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-foreground-secondary);
+  padding: var(--sp-xxs) var(--sp-xs);
+  border-radius: $br-4;
+  cursor: pointer;
+  text-transform: lowercase;
+
+  @include use-typography("body-small");
+
+  &:hover {
+    color: var(--color-foreground-primary);
+  }
+}
+
+.segmented-option-active {
+  background: var(--color-background-tertiary);
+  color: var(--color-foreground-primary);
+}
+
+// ---------------------------------------------------------------------------
+// Copy button (styles header)
+
+.copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  block-size: $sz-24;
+  padding-inline: var(--sp-xs);
+  border: none;
+  background: transparent;
+  border-radius: $br-6;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+
+  @include use-typography("body-small");
+
+  --icon-stroke-color: var(--color-foreground-secondary);
+
+  &:hover {
+    background: var(--color-background-tertiary);
+  }
+}
+
+.copy-button-active {
+  --icon-stroke-color: var(--color-accent-primary);
+
+  color: var(--color-accent-primary);
+}
+
+// ---------------------------------------------------------------------------
+// Style groups (POSITION, LAYOUT, VISUAL, …)
+
+.style-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+}
+
+.style-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+}
+
+.style-group-title {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-foreground-secondary);
+
+  @include use-typography("body-small");
+}
+
+.style-group-pre {
+  margin: 0;
+  padding: var(--sp-s) var(--sp-m);
+  background: var(--color-background-primary);
+  border-radius: $br-6;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xxs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+
+  @include use-typography("code-font");
+}
+
+// Per-declaration row (`prop: value;`)
+.style-row {
+  display: block;
+
+  @include use-typography("code-font");
+}
+
+.style-prop {
+  color: var(--color-accent-tertiary);
+}
+
+.style-colon,
+.style-semicolon {
+  color: var(--color-foreground-secondary);
+}
+
+.style-value {
+  color: var(--color-foreground-primary);
+}
+
+.style-swatch {
+  display: inline-block;
+  inline-size: $sz-12;
+  block-size: $sz-12;
+  margin-inline-end: var(--sp-xxs);
+  border-radius: 50%;
+  border: 1px solid var(--color-background-quaternary);
+  vertical-align: -2px;
+}
+
+// ---------------------------------------------------------------------------
+// Tokens list
+
+.token-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  margin: 0;
+  padding: 0;
+}
+
+.token-row {
+  display: grid;
+  grid-template-columns: 30% 1fr;
+  align-items: center;
+  gap: var(--sp-s);
+}
+
+.token-term {
+  color: var(--color-foreground-secondary);
+
+  @include use-typography("body-small");
+}
+
+.token-detail {
+  margin: 0;
+  color: var(--color-foreground-primary);
+
+  @include use-typography("body-small");
+}
+
+// ---------------------------------------------------------------------------
+// Assets list
+
+.asset-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+}
+
+.asset-row {
+  display: grid;
+  grid-template-columns: $sz-48 1fr auto;
+  align-items: center;
+  gap: var(--sp-s);
+  padding: var(--sp-xs);
+  background: var(--color-background-primary);
+  border-radius: $br-6;
+}
+
+.asset-thumb {
+  inline-size: $sz-48;
+  block-size: $sz-48;
+  background-color: var(--color-background-tertiary);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-radius: $br-4;
+}
+
+.asset-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xxs);
+  min-inline-size: 0;
+}
+
+.asset-name {
+  @include use-typography("body-small");
+  @include deprecated.text-ellipsis;
+
+  color: var(--color-foreground-primary);
+}
+
+.asset-type {
+  color: var(--color-foreground-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+
+  @include use-typography("body-small");
+}
+
+// ---------------------------------------------------------------------------
+// Empty state (no shape selected)
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-s);
+  padding-block: var(--sp-xxxl);
+  padding-inline: var(--sp-xl);
+  text-align: center;
+  color: var(--color-foreground-secondary);
+}
+
+.empty-description {
+  @include use-typography("body-small");
+
+  margin: 0;
+  max-inline-size: $sz-252;
+}
+
+.empty-description-inline {
+  @include use-typography("body-small");
+
+  margin: 0;
+  color: var(--color-foreground-secondary);
+}

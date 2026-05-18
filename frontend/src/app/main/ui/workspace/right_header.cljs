@@ -7,8 +7,10 @@
 (ns app.main.ui.workspace.right-header
   (:require-macros [app.main.style :as stl])
   (:require
+   [app.config :as cf]
    [app.main.data.common :as dcm]
    [app.main.data.event :as ev]
+   [app.main.data.html-mode :as dhtml]
    [app.main.data.shortcuts :as scd]
    [app.main.data.team :as dtm]
    [app.main.data.workspace :as dw]
@@ -153,6 +155,13 @@
                          :section "interactions"}]
              (st/emit! (dcm/go-to-viewer params)))))
 
+        nav-to-html-mode
+        (mf/use-fn
+         (mf/deps file-id page-id)
+         (fn []
+           (st/emit! (dhtml/go-to-html-mode {:file-id file-id
+                                             :page-id page-id}))))
+
         active-comments
         (mf/use-fn
          (mf/deps layout)
@@ -237,6 +246,15 @@
             :title (tr "workspace.header.share")
             :on-click open-share-dialog}
         deprecated-icon/share])
+
+     (when (contains? cf/flags :html-mode)
+       [:a {:class (stl/css :html-mode-btn)
+            :title (tr "workspace.header.html-mode")
+            :aria-label (tr "workspace.header.html-mode")
+            :role "button"
+            :tab-index 0
+            :on-click nav-to-html-mode}
+        deprecated-icon/code])
 
      [:a {:class (stl/css :viewer-btn)
           :title (tr "workspace.header.viewer" (sc/get-tooltip :open-viewer))

@@ -1,0 +1,117 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) KALEIDOS INC
+
+@use "ds/_sizes.scss" as *;
+@use "ds/typography.scss" as t;
+
+.html-mode-section {
+  display: flex;
+  flex-direction: row;
+  inline-size: 100%;
+  block-size: 100%;
+  background-color: var(--color-background-primary);
+}
+
+.preview-pane {
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+}
+
+.preview-toolbar {
+  // The toolbar is a three-zone bar: refresh on the left, the
+  // segmented Prototype/Workspace control centred, and an empty
+  // right zone reserved for future controls. We use a 1fr / auto /
+  // 1fr grid so the centre column is the natural width of the
+  // tab-switcher and the side columns flex around it — that keeps
+  // the tabs perfectly centred even when the left/right zones gain
+  // or lose content.
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--sp-s);
+  padding-block: var(--sp-xs);
+  padding-inline: var(--sp-s);
+  border-block-end: 1px solid var(--color-border-primary);
+  background-color: var(--color-background-secondary);
+}
+
+// `icon-button*` already brings the DS look; the only override we
+// need here is the placement: refresh sits in the left grid track.
+.refresh-btn {
+  justify-self: start;
+}
+
+// Spin animation applied to the reload glyph while a refresh is in
+// flight. We target the inner `<svg>` (the DS icon* passes
+// `icon-class` straight onto it) so the surrounding button chrome
+// stays still and only the icon rotates.
+.refresh-icon-spinning {
+  animation: html-mode-refresh-spin 0.8s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes html-mode-refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// The centred tab-switcher. The DS component renders an empty
+// `tabpanel` section underneath — we hide it because the toolbar is
+// only meant to host the segmented control.
+.toolbar-tabs {
+  justify-self: center;
+
+  // The DS `tab-switcher*` always renders a `tabpanel` section under
+  // the tabs (for the panel-driven variant). We're using it purely
+  // as a segmented control, so the panel has no content — hide it
+  // so it doesn't reserve vertical space inside the toolbar.
+  :global([role="tabpanel"]) {
+    display: none;
+  }
+}
+
+.preview-iframe {
+  flex: 1;
+  inline-size: 100%;
+  border: 0;
+  display: block;
+  background: var(--color-background-primary);
+}
+
+.state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-s);
+  padding-block: var(--sp-xl);
+  padding-inline: var(--sp-xl);
+  color: var(--color-foreground-secondary);
+  text-align: center;
+}
+
+.title {
+  @include t.use-typography("title-medium");
+
+  color: var(--color-foreground-primary);
+  margin: 0;
+}
+
+.description {
+  @include t.use-typography("body-medium");
+
+  margin: 0;
+  max-inline-size: $sz-400;
+}

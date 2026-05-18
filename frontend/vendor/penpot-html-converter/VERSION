@@ -1,0 +1,10 @@
+source-repo: https://github.com/juanfran/penpot-tools
+source-commit: 03922f155f738d6ba3944c09f629c3d0a2666875
+source-path: packages/converter/src
+snapshot-date: 2026-05-18
+
+modifications:
+- Removed dynamic `oxfmt` import in src/converter/index.ts (formatHtml is now a no-op).
+- Dropped src/converter/shape-code.ts and src/converter/semantics-store.ts (unused by Penpot integration; they were the only other oxfmt consumers).
+- Dropped all *.test.ts and *.integration.test.ts files (upstream test suite stays in penpot-tools).
+- Wrote a self-contained tsconfig.json targeting ES2022 ESM with declarations.
