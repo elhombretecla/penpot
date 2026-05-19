@@ -12,6 +12,54 @@
 // but valid; the consumer can prettify if desired.
 import { convertShape } from './index';
 
+/** Whitelisted semantic tags the converter can emit as wrapper overrides. */
+export const SEMANTIC_TAGS = [
+    'div', 'button', 'a',
+    'nav', 'header', 'footer', 'main', 'section', 'article', 'aside',
+    'ul', 'ol', 'li',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'p', 'label', 'span',
+];
+
+const SEMANTIC_TAG_SET = new Set(SEMANTIC_TAGS);
+
+/**
+ * Walk every shape in the page and decide which HTML tag should wrap it.
+ *
+ * Precedence (most specific first):
+ *   1. `shape-id`      — rule's value matches `shape.id` exactly.
+ *   2. `name-equals`   — `shape.name` equals the rule's value (case-insensitive).
+ *   3. `name-contains` — `shape.name` contains the rule's value (case-insensitive).
+ *
+ * Within the same tier the earlier rule wins. Disabled rules are skipped.
+ * Returns a `Map<shapeId, tag>` ready to plug into the converter's
+ * `tagOverride` callback.
+ */
+export function resolveTagOverrides(rules, objects) {
+    const out = new Map();
+    if (!rules || rules.length === 0) return out;
+    const enabled = rules.filter((r) => r && r.enabled && SEMANTIC_TAG_SET.has(r.tag));
+    if (enabled.length === 0) return out;
+
+    const byId       = enabled.filter((r) => r.type === 'shape-id');
+    const byEq       = enabled.filter((r) => r.type === 'name-equals');
+    const byContains = enabled.filter((r) => r.type === 'name-contains');
+
+    for (const id in objects) {
+        const shape = objects[id];
+        if (!shape) continue;
+        const idMatch = byId.find((r) => r.value === shape.id);
+        if (idMatch) { out.set(shape.id, idMatch.tag); continue; }
+        const name = (shape.name ?? '').toLowerCase();
+        const eqMatch = byEq.find((r) => r.value.toLowerCase() === name);
+        if (eqMatch) { out.set(shape.id, eqMatch.tag); continue; }
+        const containsMatch = byContains.find((r) =>
+            name.includes(r.value.toLowerCase()));
+        if (containsMatch) out.set(shape.id, containsMatch.tag);
+    }
+    return out;
+}
+
 /**
  * Run the full pipeline on a single shape:
  *   convertShape → extract classes → strip data-* → swap class/className.
@@ -23,11 +71,20 @@ import { convertShape } from './index';
  * @param {'html'|'jsx'}     options.format    Tag form for class attr.
  * @param {'css'|'tailwind'} options.styling   Class extraction strategy.
  * @param {boolean}          [options.includeDataAttrs=false]
+ * @param {Array}            [options.rules]   SemanticRule[] driving tag
+ *                                             overrides for the wrapper of
+ *                                             every shape in the page.
  *
  * @returns {Promise<{code: string, css: string, fonts: object[]}>}
  */
 export async function shapeToCode(shape, allObjects, ctx, options) {
     const innerCtx = { ...ctx, format: false };
+    if (options && options.rules && options.rules.length > 0) {
+        const overrides = resolveTagOverrides(options.rules, allObjects);
+        if (overrides.size > 0) {
+            innerCtx.tagOverride = (s) => overrides.get(s.id);
+        }
+    }
     const { html, fonts } = await convertShape(shape, allObjects, innerCtx);
 
     const classAttr = options.format === 'jsx' ? 'className' : 'class';

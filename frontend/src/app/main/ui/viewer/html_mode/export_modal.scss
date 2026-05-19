@@ -31,7 +31,13 @@
   inline-size: $sz-964;
   max-inline-size: calc(100vw - 2 * var(--sp-xxxl));
   max-block-size: calc(100vh - 2 * var(--sp-xxxl));
-  overflow: hidden;
+
+  // Keep this `visible` — `overflow: hidden` would clip the
+  // Semantic-Rules `select*` listboxes against the dialog edge. The
+  // pieces that actually need clipping (code blocks, rule list) own
+  // their own `overflow` rules, so the dialog stays clean without
+  // forcing a parent clip here.
+  overflow: visible;
 }
 
 .close-btn {
@@ -238,6 +244,241 @@
 .code-block-empty-hint {
   color: var(--color-foreground-secondary);
   font-style: italic;
+}
+
+// ---------------------------------------------------------------------------
+// Semantic-rules panel
+//
+// Collapsible section beneath the code blocks. Mirrors penpot-tools'
+// SemanticRules layout: header toggle + quick-tag row + rule list + add
+// form. All controls reuse Penpot DS components so the panel inherits
+// hover / focus / disabled treatments automatically.
+
+.sem-section {
+  border: $b-1 solid var(--color-background-quaternary);
+  border-radius: $br-8;
+  background: var(--color-background-secondary);
+}
+
+.sem-toggle {
+  @include use-typography("body-small");
+
+  inline-size: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  padding: var(--sp-s) var(--sp-m);
+  border: none;
+  background: transparent;
+  color: var(--color-foreground-secondary);
+  text-align: start;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-foreground-primary);
+  }
+}
+
+.sem-toggle-chevron {
+  display: inline-flex;
+  align-items: center;
+  transition: transform 150ms ease;
+
+  // The DS arrow icon points up by default; rotate so it points right
+  // when collapsed and down when expanded.
+  transform: rotate(90deg);
+
+  --icon-stroke-color: currentcolor;
+}
+
+.sem-toggle-chevron-open {
+  transform: rotate(180deg);
+}
+
+.sem-toggle-label {
+  flex: none;
+}
+
+.sem-toggle-count {
+  @include use-typography("code-font");
+
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-foreground-secondary);
+}
+
+.sem-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-m);
+  padding: var(--sp-m);
+  border-block-start: $b-1 solid var(--color-background-quaternary);
+}
+
+// --- Quick-tag row ---------------------------------------------------------
+
+.sem-quick-tag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-s);
+}
+
+.sem-quick-tag-prompt {
+  @include use-typography("body-small");
+
+  color: var(--color-foreground-secondary);
+}
+
+.sem-quick-tag-name {
+  color: var(--color-foreground-primary);
+  font-weight: 600;
+}
+
+.sem-apply-button {
+  @include use-typography("body-small");
+
+  block-size: $sz-28;
+  padding: 0 var(--sp-m);
+  border: $b-1 solid var(--color-background-quaternary);
+  border-radius: $br-6;
+  background: var(--color-background-tertiary);
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-background-quaternary);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// --- Rule list -------------------------------------------------------------
+
+.sem-rule-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+}
+
+.sem-rule-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-s);
+  padding: var(--sp-xs) var(--sp-s);
+  border: $b-1 solid var(--color-background-quaternary);
+  border-radius: $br-6;
+  background: var(--color-background-primary);
+}
+
+.sem-rule-row-disabled {
+  opacity: 0.6;
+}
+
+.sem-rule-type {
+  @include use-typography("code-font");
+
+  flex: none;
+  color: var(--color-foreground-secondary);
+}
+
+.sem-rule-value {
+  @include use-typography("body-small");
+
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-foreground-primary);
+
+  .sem-rule-row-disabled & {
+    text-decoration: line-through;
+    color: var(--color-foreground-secondary);
+  }
+}
+
+.sem-rule-arrow {
+  @include use-typography("code-font");
+
+  flex: none;
+  color: var(--color-foreground-secondary);
+}
+
+.sem-rule-tag {
+  @include use-typography("code-font");
+
+  flex: none;
+  padding: 2px var(--sp-xs);
+  border-radius: $br-4;
+  background: var(--color-accent-primary-muted);
+  color: var(--color-accent-primary);
+  font-weight: 600;
+}
+
+.sem-rule-delete {
+  flex: none;
+}
+
+// --- Add-rule form ---------------------------------------------------------
+
+.sem-add-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-s);
+  padding: var(--sp-s);
+  border: 1px dashed var(--color-background-quaternary);
+  border-radius: $br-6;
+}
+
+.sem-select {
+  // DS select* expands to fill its parent; constrain it so the controls
+  // stay tightly packed.
+  flex: none;
+  min-inline-size: $sz-120;
+
+  // Anchor the absolutely-positioned listbox to this wrapper so the
+  // upward flip below is computed against the visible row, not the
+  // panel.
+  position: relative;
+}
+
+// Every `select*` inside the Semantic Rules panel opens upward. The
+// rule list and the add-row sit close to the modal's bottom edge, so
+// the default downward dropdown would clip — anchoring the list above
+// the trigger lets it grow into the panel's breathing room instead.
+// Targeted globally inside `.sem-section` so it covers both the
+// quick-tag select, the matcher-kind select and the tag select in the
+// add-form, regardless of which `.sem-select` variant wraps them.
+.sem-section :global(.option-list) {
+  inset-block: auto calc(100% + var(--sp-xs));
+
+  // The dropdown is taller than the trigger, so cap it well within the
+  // panel even when the user has many tags to choose from.
+  max-block-size: $sz-224;
+}
+
+.sem-select-type {
+  min-inline-size: $sz-154;
+}
+
+.sem-add-value {
+  flex: 1 1 $sz-160;
+  min-inline-size: $sz-160;
+}
+
+.sem-add-button {
+  flex: none;
 }
 
 // ---------------------------------------------------------------------------
