@@ -296,7 +296,13 @@
              imode    (or (some-> (:interactions-mode params) keyword)
                           :show-on-click)
              frame-id (some-> (:frame-id params) uuid/parse*)
-             share    (:share params)]
+             share    (:share params)
+             ;; HTML-Mode-specific: which of the two sub-views to
+             ;; show — `workspace` (default) or `prototype`. Lives in
+             ;; the URL so the mode is shareable.
+             html-mode (case (:mode params)
+                         "prototype" :prototype
+                         :workspace)]
 
          [:? {}
           [:> viewer-page*
@@ -307,6 +313,7 @@
             :index index
             :share-id share-id
             :interactions-mode imode
+            :html-mode html-mode
             :share share}]])
 
 

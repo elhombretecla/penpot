@@ -279,7 +279,7 @@
                           :zoom zoom}])]])
 
 (mf/defc viewer-content*
-  [{:keys [data page-id share-id section index interactions-mode share]}]
+  [{:keys [data page-id share-id section index interactions-mode html-mode share]}]
   (let [{:keys [file users project permissions]} data
         allowed (or
                  (= section :interactions)
@@ -573,7 +573,10 @@
                                 :on-click click-on-screen}
        (cond
          (= section :html)
-         [:> html-mode-section* {:page page :file file}]
+         [:> html-mode-section* {:page page
+                                 :file file
+                                 :frame frame
+                                 :html-mode html-mode}]
 
          (empty? frames)
          [:section {:class (stl/css :empty-state)}

@@ -5807,8 +5807,16 @@ msgid "viewer.html-mode.tree.toggle"
 msgstr "Toggle children"
 
 #: src/app/main/ui/viewer/html_mode.cljs
+msgid "viewer.html-mode.toolbar.prototype"
+msgstr "Prototype"
+
+#: src/app/main/ui/viewer/html_mode.cljs
 msgid "viewer.html-mode.toolbar.refresh"
 msgstr "Refresh"
+
+#: src/app/main/ui/viewer/html_mode.cljs
+msgid "viewer.html-mode.toolbar.workspace"
+msgstr "Workspace"
 
 #: src/app/main/ui/viewer/html_mode.cljs
 msgid "viewer.html-mode.toolbar.updated-at"

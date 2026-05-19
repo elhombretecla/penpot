@@ -13,6 +13,16 @@
   inline-size: 100%;
   block-size: 100%;
   background-color: var(--color-background-primary);
+
+  // Prototype mode hides both sidebars (the components are also
+  // skipped in JSX, so this is mostly defensive) and lets the preview
+  // pane fill the full width — matching the regular viewer
+  // interactions section's edge-to-edge layout.
+  &[data-mode="prototype"] {
+    .preview-pane {
+      flex: 1 1 100%;
+    }
+  }
 }
 
 .preview-pane {
