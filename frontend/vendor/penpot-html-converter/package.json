@@ -27,6 +27,9 @@
     "./decl": {
       "types": "./dist/converter/decl.d.ts",
       "default": "./dist/converter/decl.js"
+    },
+    "./shape-code": {
+      "default": "./dist/converter/shape-code.js"
     }
   },
   "files": [

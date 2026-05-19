@@ -58,16 +58,17 @@
   (:require-macros [app.main.style :as stl])
   (:require
    ["@penpot/html-converter" :as cv]
-   [app.config :as cf]
    [app.main.data.html-mode :as dhtml]
    [app.main.data.html-mode.adapter :as adapter]
    [app.main.data.html-mode.cache :as cache]
+   [app.main.data.html-mode.converter-ctx :as cctx]
    [app.main.fonts :as fonts]
    [app.main.router :as rt]
    [app.main.store :as st]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :as i]
    [app.main.ui.ds.layout.tab-switcher :refer [tab-switcher*]]
+   [app.main.ui.viewer.html-mode.export-modal]
    [app.main.ui.viewer.html-mode.layers-tree :refer [layers-tree*]]
    [app.main.ui.viewer.html-mode.sidebar :refer [html-mode-sidebar*]]
    [app.util.i18n :refer [tr]]
@@ -77,55 +78,10 @@
 
 ;; ---------------------------------------------------------------------------
 ;; Converter wiring
-
-(defn- resolve-image-url
-  "Penpot image fills are uploaded as file media and served at
-   `/assets/by-file-media-id/<id>`. The converter callback only
-   carries the bare id, so we reconstruct the wrapper map that
-   `cf/resolve-file-media` expects."
-  [id]
-  (cf/resolve-file-media {:id id}))
-
-(defn- file-typographies
-  "Extract the file's typography library as a plain JS object keyed by
-   typography id. The converter looks leaves up by their
-   `typographyRefId` and inherits the typography's font properties when
-   the leaf itself doesn't override them — without this, headlines that
-   rely on a library typography render with the browser default font /
-   size / colour."
-  [file]
-  (let [typos (or (get-in file [:data :typographies])
-                  (get file :typographies))]
-    (when (seq typos)
-      (let [obj #js {}]
-        (doseq [[id typo] typos]
-          (unchecked-set obj (str id) (adapter/->js typo)))
-        obj))))
-
-(defn- converter-context
-  "Build the JS context the converter consumes. The base fields cover
-   image-asset resolution and disable the (no-op) HTML pretty-printer.
-
-   On top of that we thread:
-   - `typographies` — the file's typography library, so leaves with a
-     `:typography-ref-id` inherit their font properties (see
-     `file-typographies`).
-   - `tokens` — a `Map<token-name, resolved-css-value>` built from the
-     page's `appliedTokens`. The converter calls `tokenToCssVar(name,
-     tokens)` which produces `var(--name, <fallback>)`. Without this
-     map the fallback is omitted; combined with an iframe that never
-     defines the custom property, the browser silently resolves the
-     reference to `inherit`, which is why headlines with applied
-     colour tokens render black-on-black."
-  [file js-page]
-  (let [base #js {:resolveImageUrl resolve-image-url
-                  :format          false}]
-    (when-let [typos (file-typographies file)]
-      (unchecked-set base "typographies" typos))
-    (when-let [tokens (some-> ^js js-page .-objects cv/extractTokens)]
-      (when (pos? (.-size ^js tokens))
-        (unchecked-set base "tokens" tokens)))
-    base))
+;;
+;; The JS context builder lives in `app.main.data.html-mode.converter-ctx`
+;; so it can be shared with the Export modal without dragging the renderer
+;; into the modal's require graph.
 
 ;; ---------------------------------------------------------------------------
 ;; Fonts
@@ -196,7 +152,7 @@
    why typography-token-driven text used to render invisible."
   [file page]
   (let [js-page (adapter/->js-page page)
-        ctx    (converter-context file js-page)
+        ctx    (cctx/converter-context file js-page)
         tokens (.-tokens ctx)
         tokens-css (when (and tokens (pos? (.-size tokens))) (cv/tokensToCss tokens))]
     (-> (js/Promise.all
@@ -240,7 +196,7 @@
    are converted."
   [file page frame]
   (let [js-page    (adapter/->js-page page)
-        ctx        (converter-context file js-page)
+        ctx        (cctx/converter-context file js-page)
         js-objects (.-objects js-page)
         js-shape   (unchecked-get js-objects (str (:id frame)))
         tokens     (.-tokens ctx)

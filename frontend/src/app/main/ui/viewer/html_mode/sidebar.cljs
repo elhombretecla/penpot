@@ -27,8 +27,8 @@
    [app.common.types.components-list :as ctcl]
    [app.common.uuid :as uuid]
    [app.config :as cf]
-   [app.main.data.exports.assets :as de]
    [app.main.data.html-mode.style-parse :as sp]
+   [app.main.data.modal :as modal]
    [app.main.refs :as refs]
    [app.main.store :as st]
    [app.main.ui.components.dropdown :refer [dropdown]]
@@ -496,20 +496,11 @@
 ;; ---------------------------------------------------------------------------
 ;; Export action
 ;;
-;; Mirrors the small "</> Export" button in the design mock. Triggers
-;; Penpot's regular PNG export for the selected shape — same pipeline
-;; the workspace and viewer Inspect tabs use.
-
-(defn- export-shape!
-  [shape page file]
-  (let [export {:type :png
-                :scale 1
-                :suffix ""
-                :name (:name shape)
-                :page-id (:id page)
-                :file-id (:id file)
-                :object-id (:id shape)}]
-    (st/emit! (de/request-export {:exports [export]}))))
+;; The small "</> Export" button opens the Export Shape modal — same
+;; surface the design mock describes: format toggle (HTML/JSX), styling
+;; toggle (CSS/Tailwind), include-data-attrs checkbox, and live code
+;; blocks the user can copy to the clipboard. Live code generation
+;; lives in `app.main.ui.viewer.html-mode.export-modal`.
 
 (mf/defc export-button*
   [{:keys [shape page file]}]
@@ -518,7 +509,8 @@
          (mf/deps shape page file)
          (fn [_]
            (when (and shape page file)
-             (export-shape! shape page file))))]
+             (st/emit! (modal/show :html-mode-export-shape
+                                   {:file file :page page :shape shape})))))]
     [:button {:type "button"
               :class (stl/css :export-button)
               :on-click on-click

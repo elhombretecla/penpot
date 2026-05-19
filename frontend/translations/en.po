@@ -5724,7 +5724,47 @@ msgstr "Export"
 
 #: src/app/main/ui/viewer/html_mode/sidebar.cljs
 msgid "viewer.html-mode.sidebar.export.title"
-msgstr "Export layer as PNG"
+msgstr "Export shape as code"
+
+#: src/app/main/ui/viewer/html_mode/export_modal.cljs
+msgid "viewer.html-mode.export.title"
+msgstr "Export shape"
+
+#: src/app/main/ui/viewer/html_mode/export_modal.cljs
+msgid "viewer.html-mode.export.subtitle"
+msgstr "Generate framework-ready code for the selected shape."
+
+#: src/app/main/ui/viewer/html_mode/export_modal.cljs
+msgid "viewer.html-mode.export.format"
+msgstr "Format"
+
+#: src/app/main/ui/viewer/html_mode/export_modal.cljs
+msgid "viewer.html-mode.export.styling"
+msgstr "Styling"
+
+#: src/app/main/ui/viewer/html_mode/export_modal.cljs
+msgid "viewer.html-mode.export.include-data-attrs"
+msgstr "Include data-* attrs"
+
+#: src/app/main/ui/viewer/html_mode/export_modal.cljs
+msgid "viewer.html-mode.export.copy"
+msgstr "Copy"
+
+#: src/app/main/ui/viewer/html_mode/export_modal.cljs
+msgid "viewer.html-mode.export.copied"
+msgstr "Copied!"
+
+#: src/app/main/ui/viewer/html_mode/export_modal.cljs
+msgid "viewer.html-mode.export.generating"
+msgstr "Generating…"
+
+#: src/app/main/ui/viewer/html_mode/export_modal.cljs
+msgid "viewer.html-mode.export.empty"
+msgstr "Empty."
+
+#: src/app/main/ui/viewer/html_mode/export_modal.cljs
+msgid "viewer.html-mode.export.no-styles"
+msgstr "Shape has no inline styles."
 
 #: src/app/main/ui/viewer/html_mode/sidebar.cljs
 msgid "viewer.html-mode.sidebar.format.aria"
