@@ -209,7 +209,7 @@
                :class (stl/css :go-log-btn)} (tr "labels.log-or-sign")])]))
 
 (mf/defc header-sitemap
-  [{:keys [project file page frame toggle-thumbnails] :as props}]
+  [{:keys [project file page frame toggle-thumbnails section html-mode] :as props}]
   (let [project-name   (:name project)
         file-name      (:name file)
         page-name      (:name page)
@@ -237,7 +237,15 @@
            :title (tr "viewer.header.sitemap")}
      [:span {:class (stl/css :project-name)} project-name]
      [:div {:class (stl/css :sitemap-text)}
-      [:div {:class (stl/css :breadcrumb)
+      [:div {:class (stl/css-case
+                     :breadcrumb true
+                     ;; HTML-Mode workspace promotes the page name to
+                     ;; the brighter foreground colour (the slot the
+                     ;; hidden frame selector used to occupy), and
+                     ;; drops the text-ellipsis so the full page name
+                     ;; is readable.
+                     :breadcrumb-html-workspace
+                     (and (= section :html) (= html-mode :workspace)))
              :on-click open-dropdown}
        [:span  {:class (stl/css :breadcrumb-text)}
         (dm/str file-name " / " page-name)]
@@ -256,18 +264,24 @@
              (get-in file [:data :pages-index id :name])]
             (when (= page-id id)
               [:span {:class (stl/css :icon-check)} deprecated-icon/tick])])]]]
-      [:div {:class (stl/css :current-frame)
-             :id "current-frame"
-             :on-click toggle-thumbnails}
-       [:span {:class (stl/css :frame-name)} frame-name]
-       [:span {:class (stl/css :icon)} deprecated-icon/arrow]]]]))
+      ;; In HTML Mode's workspace view the user navigates by page,
+      ;; not by frame — the breadcrumb shouldn't expose the frame
+      ;; thumbnails picker there. Prototype mode keeps it (the user
+      ;; needs to switch boards). Every other viewer section keeps
+      ;; the existing UX too.
+      (when-not (and (= section :html) (= html-mode :workspace))
+        [:div {:class (stl/css :current-frame)
+               :id "current-frame"
+               :on-click toggle-thumbnails}
+         [:span {:class (stl/css :frame-name)} frame-name]
+         [:span {:class (stl/css :icon)} deprecated-icon/arrow]])]]))
 
 (def ^:private penpot-logo-icon
   (deprecated-icon/icon-xref :penpot-logo-icon (stl/css :logo-icon)))
 
 
 (mf/defc header
-  [{:keys [project file page frame zoom section permissions index interactions-mode shown-thumbnails share]}]
+  [{:keys [project file page frame zoom section html-mode permissions index interactions-mode shown-thumbnails share]}]
   (let [go-to-dashboard
         (mf/use-fn
          #(st/emit! (dv/go-to-dashboard)))
@@ -322,6 +336,8 @@
                           :file file
                           :page page
                           :frame frame
+                          :section section
+                          :html-mode html-mode
                           :toggle-thumbnails toggle-thumbnails
                           :index index}]]
 

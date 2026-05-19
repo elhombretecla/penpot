@@ -58,12 +58,10 @@
   (:require-macros [app.main.style :as stl])
   (:require
    ["@penpot/html-converter" :as cv]
-   [app.common.uuid :as uuid]
    [app.config :as cf]
    [app.main.data.html-mode :as dhtml]
    [app.main.data.html-mode.adapter :as adapter]
    [app.main.data.html-mode.cache :as cache]
-   [app.main.data.viewer :as dv]
    [app.main.fonts :as fonts]
    [app.main.router :as rt]
    [app.main.store :as st]
@@ -72,7 +70,6 @@
    [app.main.ui.ds.layout.tab-switcher :refer [tab-switcher*]]
    [app.main.ui.viewer.html-mode.layers-tree :refer [layers-tree*]]
    [app.main.ui.viewer.html-mode.sidebar :refer [html-mode-sidebar*]]
-   [app.util.dom :as dom]
    [app.util.i18n :refer [tr]]
    [app.util.object :as obj]
    [beicon.v2.core :as rx]
@@ -222,49 +219,25 @@
                    (cache/put! k result)
                    result))))))
 
+;; Forward declarations for helpers used by the prototype renderer
+;; that live in the next section (the HTML document wrapper).
+(declare page-background)
+
 ;; ---------------------------------------------------------------------------
-;; Single-board rendering (Prototype mode)
+;; Prototype mode rendering
 ;;
-;; Prototype mode reuses the same converter but calls `convertShape` for
-;; ONE board at a time and overlays a minimal click bridge that fires
-;; the shape's `:interactions` actions. We support a subset of the
-;; interaction model in v1 — click → navigate / open-url. Hover events,
-;; overlays, animations, and the rest live in the SVG viewer and are
-;; deferred (see plan).
-
-(defn- v1-interaction?
-  "v1 prototype mode only fires click→navigate / click→open-url. The
-   other event-types and action-types live in the full SVG interactions
-   pipeline and are out of scope for the first cut."
-  [interaction]
-  (and (= :click (:event-type interaction))
-       (contains? #{:navigate :open-url} (:action-type interaction))))
-
-(defn- collect-board-shapes
-  "Depth-first walk of a board's subtree. Skips shapes marked
-   `:hide-in-viewer` — they shouldn't be clickable in the prototype
-   preview just like they aren't in the regular interactions viewer."
-  [objects root-id]
-  (loop [stack (list root-id)
-         acc   (transient [])]
-    (if-let [id (peek stack)]
-      (let [s (get objects id)
-            rest-stack (pop stack)]
-        (if (or (nil? s) (:hide-in-viewer s))
-          (recur rest-stack acc)
-          (recur (into rest-stack (or (:shapes s) []))
-                 (conj! acc s))))
-      (persistent! acc))))
+;; Prototype mode shows ONE board at a time, picked by the URL
+;; `?index=` query param (driven by the existing viewer header
+;; thumbnails / pagination). The board renders via `convertShape` —
+;; just static HTML; clicks do nothing (no interactions wired here
+;; yet). When `index` changes, the iframe rebuilds with the new
+;; board.
 
 (defn- render-board-html
-  "Resolve a Promise of `{:html :fonts-css :tokens-css}` for a single
-   board. Mirrors `render-page-html` but calls `cv/convertShape` so
-   only the requested frame and its descendants are converted.
-
-   Font CSS and design-token CSS still come from the whole-page
-   pipeline because both are page-scoped resources — the board needs
-   the same `@font-face` rules and `:root` token block as the rest of
-   the page would have."
+  "Resolve a Promise of `{:html :fonts-css :tokens-css}` for the
+   currently-selected board. Mirrors `render-page-html` but calls
+   `cv/convertShape` so only the requested frame and its descendants
+   are converted."
   [file page frame]
   (let [js-page    (adapter/->js-page page)
         ctx        (converter-context file js-page)
@@ -281,27 +254,6 @@
                  {:html       (aget parts 0)
                   :fonts-css  (aget parts 1)
                   :tokens-css (or tokens-css "")})))))
-
-(defn- build-interactions-index
-  "Build `{shape-id-string → [interaction-map …]}` for every shape on
-   the board that carries at least one v1-compatible interaction.
-
-   The map is serialised to JSON and injected into the iframe as
-   `window.__penpot_interactions`; the prototype bridge script reads
-   from it on every click."
-  [objects frame-id]
-  (->> (collect-board-shapes objects frame-id)
-       (keep (fn [shape]
-               (let [its (->> (:interactions shape)
-                              (filterv v1-interaction?))]
-                 (when (seq its)
-                   [(str (:id shape))
-                    (mapv (fn [i]
-                            {:actionType  (name (:action-type i))
-                             :destination (some-> (:destination i) str)
-                             :url         (:url i)})
-                          its)]))))
-       (into {})))
 
 ;; ---------------------------------------------------------------------------
 ;; HTML document wrapper
@@ -860,49 +812,14 @@
 ;; a one-pass DOM annotation that flags interactive shapes so CSS can
 ;; give them a pointer cursor.
 
-(def ^:private prototype-bridge-script
-  (str
-   "(function(){"
-   "var map=window.__penpot_interactions||{};"
-   ;; Mark every interactive shape so the cursor:pointer CSS rule
-   ;; (defined in `build-prototype-document`) targets them.
-   "Object.keys(map).forEach(function(id){"
-   "  var el=document.querySelector('[data-id=\"'+id+'\"]');"
-   "  if(el){el.setAttribute('data-has-interaction','');}"
-   "});"
-   "document.addEventListener('click',function(e){"
-   "  var n=e.target;"
-   "  while(n && n!==document.body){"
-   "    var id=n.getAttribute && n.getAttribute('data-id');"
-   "    if(id && map[id]){"
-   "      e.preventDefault();"
-   "      e.stopPropagation();"
-   "      try{parent.postMessage({"
-   "        type:'penpot:html-mode:interaction',"
-   "        shapeId:id,"
-   "        interactions:map[id]"
-   "      },'*');}catch(_){}"
-   "      return;"
-   "    }"
-   "    n=n.parentNode;"
-   "  }"
-   "},true);"
-   "})();"))
-
 (defn- build-prototype-document
-  "Wrap a single-board HTML body in a minimal document with reset CSS,
-   the page background, fonts + tokens, the injected interactions
-   index, and the prototype bridge script.
-
-   The board renders at origin (no canvas wrapper / translate / scale)
-   because Prototype mode is meant to show one frame at a time — the
-   iframe just scrolls if the frame is larger than the viewport, same
-   as the regular interactions viewer."
-  [{:keys [html fonts-css tokens-css]} page interactions-index]
+  "Wrap a single board's HTML in a minimal document with reset CSS,
+   the page background, and the page-scoped fonts + tokens. Prototype
+   mode is static (no click handlers, no scripts) — it's just the
+   converted board rendered in isolation."
+  [{:keys [html fonts-css tokens-css]} page]
   (let [bg   (page-background page)
-        name (or (:name page) "Penpot HTML preview")
-        ;; Serialised payload picked up by the bridge script at boot.
-        idx-json (-> interactions-index clj->js js/JSON.stringify)]
+        name (or (:name page) "Penpot HTML preview")]
     (str
      "<!DOCTYPE html>\n"
      "<html lang=\"en\">\n"
@@ -915,21 +832,11 @@
      "  *, *::before, *::after { box-sizing: border-box; }\n"
      "  html, body { margin: 0; padding: 0; }\n"
      "  p, h1, h2, h3, h4, h5, h6, ul, ol, dl, li, dd, blockquote, figure, pre { margin: 0; padding: 0; }\n"
-     ;; Centre the (single) board inside the viewport. Scroll on
-     ;; overflow so taller-than-viewport boards still fully reachable.
      "  body { min-block-size: 100vh; background: " bg "; display: flex; justify-content: center; align-items: flex-start; padding: 24px; user-select: none; }\n"
-     ;; Hot-spot cursor for any shape the bridge tagged with
-     ;; `data-has-interaction` on boot.
-     "  [data-has-interaction] { cursor: pointer; }\n"
      "</style>\n"
      "</head>\n"
      "<body>\n"
-     ;; `convertShape` already emits the board with its own
-     ;; dimensions and `position: relative`; the body's flex centring
-     ;; positions it inside the viewport without further wrapping.
      html "\n"
-     "<script>window.__penpot_interactions=" idx-json ";</script>\n"
-     "<script>" prototype-bridge-script "</script>\n"
      "</body>\n"
      "</html>")))
 
@@ -952,38 +859,6 @@
 
         "penpot:html-mode:deselect"
         ::deselect
-
-        nil))))
-
-(defn- dispatch-prototype-interaction!
-  "Handle a `penpot:html-mode:interaction` message from the iframe.
-
-   v1 fires the first interaction in the array. The supported actions
-   are:
-     • `:navigate` → reuse `dv/go-to-frame` so the URL `:index` updates
-       and the viewer re-renders with the new frame. Cross-page
-       navigation is not supported in v1 — if the destination frame
-       isn't on the current page we no-op (and warn).
-     • `:open-url` → open a new browser tab via `dom/open-new-window`.
-
-   Other action-types are ignored for now (overlays, animations,
-   prev-screen, mouse-enter / mouse-leave, after-delay)."
-  [^js data page]
-  (let [its (js->clj (obj/get data "interactions") :keywordize-keys true)
-        i   (first its)]
-    (when i
-      (case (keyword (:actionType i))
-        :navigate
-        (when-let [dest (some-> (:destination i) uuid/parse*)]
-          (if (some? (get-in page [:objects dest]))
-            (st/emit! (dv/go-to-frame dest))
-            (js/console.warn
-             "HTML Mode prototype: navigate destination not on current page"
-             (str dest))))
-
-        :open-url
-        (when-let [u (:url i)]
-          (dom/open-new-window u))
 
         nil))))
 
@@ -1057,10 +932,11 @@
                                "*"))))))]
 
     ;; Re-render whenever the file, page, mode, or (for prototype
-    ;; mode) the selected frame changes. Workspace mode caches whole
-    ;; pages; prototype mode renders the picked board on the fly via
-    ;; `render-board-html` and injects the interactions index built
-    ;; from `(:objects page)` for that same board.
+    ;; Re-render whenever the file, page, mode, or (for prototype
+    ;; mode) the selected frame changes. Workspace caches whole-page
+    ;; renders; prototype renders the currently-picked board via
+    ;; `render-board-html` and wraps it in a static iframe document
+    ;; (no scripts, no click handlers).
     (mf/with-effect [file page mode frame]
       (let [cancelled? (volatile! false)
             on-error
@@ -1085,12 +961,11 @@
               (-> (render-board-html file page frame)
                   (.then (fn [parts]
                            (when-not @cancelled?
-                             (let [idx (build-interactions-index (:objects page) (:id frame))]
-                               (reset! state*
-                                       {:status     :ready
-                                        :html       (build-prototype-document parts page idx)
-                                        :error      nil
-                                        :updated-at (js/Date.now)})))))
+                             (reset! state*
+                                     {:status     :ready
+                                      :html       (build-prototype-document parts page)
+                                      :error      nil
+                                      :updated-at (js/Date.now)}))))
                   (.catch on-error))))
 
           :else
@@ -1107,23 +982,14 @@
                 (.catch on-error))))
         (fn [] (vreset! cancelled? true))))
 
-    ;; Listen for selection messages from the iframe.
-    ;; Workspace mode posts `penpot:html-mode:select` / `:deselect`;
-    ;; prototype mode posts `penpot:html-mode:interaction`. The same
-    ;; listener serves both paths.
-    (mf/with-effect [page]
+    ;; Listen for shape-selection messages from the workspace-mode
+    ;; iframe. Prototype mode posts nothing — the iframe is static.
+    (mf/with-effect []
       (let [handler (fn [^js e]
-                      (let [^js data (.-data e)
-                            t (when (object? data) (obj/get data "type"))]
+                      (let [result (read-selected (.-data e))]
                         (cond
-                          (= t "penpot:html-mode:interaction")
-                          (dispatch-prototype-interaction! data page)
-
-                          :else
-                          (let [result (read-selected data)]
-                            (cond
-                              (= result ::deselect) (reset! selected* nil)
-                              (some? result)        (reset! selected* result))))))]
+                          (= result ::deselect) (reset! selected* nil)
+                          (some? result)        (reset! selected* result))))]
         (.addEventListener js/window "message" handler)
         (fn [] (.removeEventListener js/window "message" handler))))
 

@@ -69,6 +69,25 @@
   cursor: pointer;
 }
 
+// HTML-Mode workspace hides the frame selector, so the page slot of
+// the breadcrumb becomes the "current" item. Promote it to the same
+// foreground colour the frame name used to wear and drop the
+// ellipsis so the full page name is readable.
+.breadcrumb-html-workspace {
+  color: var(--title-foreground-color-hover);
+
+  .breadcrumb-text {
+    max-inline-size: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  .icon svg {
+    stroke: var(--title-foreground-color-hover);
+  }
+}
+
 .breadcrumb-text {
   @include deprecated.text-ellipsis;
 

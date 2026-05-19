@@ -627,6 +627,7 @@
                         :permissions permissions
                         :zoom zoom
                         :section section
+                        :html-mode html-mode
                         :shown-thumbnails (:show-thumbnails local)
                         :interactions-mode interactions-mode
                         :share share}]]))
