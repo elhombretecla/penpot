@@ -9,6 +9,7 @@
    ["highlight.js/lib/core$default" :as hljs]
    ["highlight.js/lib/languages/css$default" :as hljs-css]
    ["highlight.js/lib/languages/javascript$default" :as hljs-js]
+   ["highlight.js/lib/languages/json$default" :as hljs-json]
    ["highlight.js/lib/languages/xml$default" :as hljs-xml]
    ["js-beautify" :as beautify]
    [cuerdas.core :as str]))
@@ -28,13 +29,15 @@
   (do (.registerLanguage ^js hljs "xml"        hljs-xml)
       (.registerLanguage ^js hljs "css"        hljs-css)
       (.registerLanguage ^js hljs "javascript" hljs-js)
+      (.registerLanguage ^js hljs "json"       hljs-json)
       true))
 
 (def ^:private hljs-aliases
   {"html" "xml"
    "jsx"  "javascript"
    "js"   "javascript"
-   "css"  "css"})
+   "css"  "css"
+   "json" "json"})
 
 (defn highlight
   "Return an HTML string with `.hljs-…` token spans for `code` rendered in

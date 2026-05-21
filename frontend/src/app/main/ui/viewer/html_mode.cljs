@@ -68,6 +68,7 @@
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :as i]
    [app.main.ui.ds.layout.tab-switcher :refer [tab-switcher*]]
+   [app.main.ui.viewer.html-mode.design-tokens :refer [design-tokens-view*]]
    [app.main.ui.viewer.html-mode.export-modal]
    [app.main.ui.viewer.html-mode.layers-tree :refer [layers-tree*]]
    [app.main.ui.viewer.html-mode.sidebar :refer [html-mode-sidebar*]]
@@ -834,10 +835,10 @@
   [{:keys [page file frame html-mode]}]
   (let [state*    (mf/use-state {:status :loading :html nil :error nil :updated-at nil})
         selected* (mf/use-state nil)
-        ;; `html-mode` is `:workspace` (default) or `:prototype`. It
-        ;; comes from the URL `?mode=` query param so the selection is
-        ;; shareable. The Workspace/Prototype tab switcher emits a
-        ;; route nav that flips it.
+        ;; `html-mode` is `:workspace` (default), `:prototype`, or
+        ;; `:design-tokens`. It comes from the URL `?mode=` query param
+        ;; so the selection is shareable. The Workspace/Prototype/
+        ;; Design Tokens tab switcher emits a route nav that flips it.
         mode      (or html-mode :workspace)
         mode-str  (name mode)
         on-mode-change
@@ -908,6 +909,13 @@
         (cond
           (nil? page)
           (reset! state* {:status :empty :html nil :error nil :updated-at nil})
+
+          ;; Design Tokens mode bypasses the iframe entirely — the
+          ;; design-tokens-view* operates on `(:objects page)` directly
+          ;; and renders its own layout. Mark the state so the toolbar
+          ;; can disable the refresh button.
+          (= mode :design-tokens)
+          (reset! state* {:status :design-tokens :html nil :error nil :updated-at nil})
 
           (= mode :prototype)
           (if (nil? frame)
@@ -1036,44 +1044,66 @@
                           :tabs [{:id "prototype"
                                   :label (tr "viewer.html-mode.toolbar.prototype")}
                                  {:id "workspace"
-                                  :label (tr "viewer.html-mode.toolbar.workspace")}]
+                                  :label (tr "viewer.html-mode.toolbar.workspace")}
+                                 {:id "design-tokens"
+                                  :label (tr "viewer.html-mode.toolbar.design-tokens")}]
                           :selected mode-str
                           :on-change on-mode-change}]]
 
-      (case status
-        :empty
-        [:div {:class (stl/css :state)}
-         [:p {:class (stl/css :description)}
-          (tr "viewer.empty-state")]]
+      (if (= mode :design-tokens)
+        ;; Design Tokens mode renders its own panel layout (left sub-
+        ;; sidebar with sub-tabs + main content area), so it bypasses
+        ;; the iframe-driven `:empty/:loading/:error/:ready` state
+        ;; machine entirely. `file` carries the `:tokens-lib` the
+        ;; DTCG JSON exporter consumes.
+        [:> design-tokens-view* {:page page :file file}]
 
-        :loading
-        [:div {:class (stl/css :state)}
-         [:p {:class (stl/css :description)}
-          (tr "viewer.html-mode.loading")]]
+        (case status
+          :empty
+          [:div {:class (stl/css :state)}
+           [:p {:class (stl/css :description)}
+            (tr "viewer.empty-state")]]
 
-        :error
-        [:div {:class (stl/css :state)}
-         [:h1 {:class (stl/css :title)}
-          (tr "viewer.html-mode.error")]
-         [:p {:class (stl/css :description)}
-          (or error (tr "errors.generic"))]]
+          :loading
+          [:div {:class (stl/css :state)}
+           [:p {:class (stl/css :description)}
+            (tr "viewer.html-mode.loading")]]
 
-        :ready
-        [:iframe {:class           (stl/css :preview-iframe)
-                  :ref             iframe-ref
-                  :title           (tr "viewer.html-mode.iframe-title")
-                  :src-doc         html
-                  ;; `allow-same-origin` is required so the iframe can load
-                  ;; fonts and image assets from Penpot's own URLs with the
-                  ;; user's session credentials — without it the iframe has
-                  ;; an opaque origin and cross-origin requests for fonts
-                  ;; fail, causing text shapes to render with system
-                  ;; fallback fonts and overflow their measured bounds.
-                  ;; The injected script is one we control, so granting
-                  ;; same-origin is acceptable. See the namespace docstring
-                  ;; for the full threat model.
-                  :sandbox         "allow-scripts allow-same-origin"
-                  :referrer-policy "no-referrer"}])]
+          :error
+          [:div {:class (stl/css :state)}
+           [:h1 {:class (stl/css :title)}
+            (tr "viewer.html-mode.error")]
+           [:p {:class (stl/css :description)}
+            (or error (tr "errors.generic"))]]
+
+          :ready
+          [:iframe {:class           (stl/css :preview-iframe)
+                    :ref             iframe-ref
+                    :title           (tr "viewer.html-mode.iframe-title")
+                    :src-doc         html
+                    ;; `allow-same-origin` is required so the iframe can load
+                    ;; fonts and image assets from Penpot's own URLs with the
+                    ;; user's session credentials — without it the iframe has
+                    ;; an opaque origin and cross-origin requests for fonts
+                    ;; fail, causing text shapes to render with system
+                    ;; fallback fonts and overflow their measured bounds.
+                    ;; The injected script is one we control, so granting
+                    ;; same-origin is acceptable. See the namespace docstring
+                    ;; for the full threat model.
+                    :sandbox         "allow-scripts allow-same-origin"
+                    :referrer-policy "no-referrer"}]
+
+          ;; Default branch — exercised on the first render after the
+          ;; user navigates AWAY from `:design-tokens`. React renders
+          ;; once with the stale `:design-tokens` status before the
+          ;; render effect re-runs and resets it to `:loading`; without
+          ;; a default the `case` would throw "No matching clause".
+          ;; Showing the loading placeholder is fine — the effect
+          ;; immediately kicks in and the real content arrives next
+          ;; tick.
+          [:div {:class (stl/css :state)}
+           [:p {:class (stl/css :description)}
+            (tr "viewer.html-mode.loading")]]))]
 
      (when (= mode :workspace)
        [:> html-mode-sidebar* {:selected selected :page page :file file}])]))

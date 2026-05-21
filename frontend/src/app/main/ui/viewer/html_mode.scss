@@ -23,6 +23,15 @@
       flex: 1 1 100%;
     }
   }
+
+  // Design Tokens mode also hides both sidebars; the design-tokens-view*
+  // brings its own left sub-sidebar + main pane inside the preview pane,
+  // so we just need the preview pane to take the full width.
+  &[data-mode="design-tokens"] {
+    .preview-pane {
+      flex: 1 1 100%;
+    }
+  }
 }
 
 .preview-pane {
@@ -48,7 +57,7 @@
   padding-block: var(--sp-xs);
   padding-inline: var(--sp-s);
   border-block-end: 1px solid var(--color-border-primary);
-  background-color: var(--color-background-secondary);
+  border-bottom: 1px solid var(--color-background-secondary);
 }
 
 // `icon-button*` already brings the DS look; the only override we

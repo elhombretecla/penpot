@@ -488,18 +488,39 @@
 // only the categories we need — tags, attributes, strings, numbers,
 // keywords, comments, selectors / properties / values for CSS — and bind
 // each to a soft palette that reads well on the design-system's
-// `--color-background-primary` surface in both light and dark themes.
-// The palette is tuned to harmonise with Penpot's purple/cyan accent
-// without taking it over.
+// `--color-background-primary` surface in BOTH dark and light themes.
+//
+// Palette is published as CSS custom properties so any consumer (the
+// export modal here, the Design Tokens CSS view, …) gets the same
+// theme-aware colours just by referencing `var(--hljs-…)`.
 
-$hljs-keyword: #c792ea; // tag names, JS keywords, CSS at-rules
-$hljs-string: #c3e88d; // strings, attribute values
-$hljs-number: #f78c6c; // numeric & length values
-$hljs-property: #82aaff; // CSS property names, JS object keys
-$hljs-attribute: #ffcb6b; // HTML attribute names
-$hljs-selector: #f07178; // CSS selectors (class / id / pseudo)
-$hljs-comment: #6a8595; // any kind of comment
-$hljs-punct: var(--color-foreground-secondary);
+:root {
+  // Defaults — these are the dark-theme values. Light-theme overrides
+  // live next to Penpot's other `.light` token overrides further below.
+  // Tuned to read well on `var(--color-background-primary)` in dark.
+  --hljs-keyword: #c792ea;        // tag names, JS keywords, CSS at-rules
+  --hljs-string: #c3e88d;         // strings, attribute values
+  --hljs-number: #f78c6c;         // numeric & length values
+  --hljs-property: #82aaff;       // CSS property names, JS object keys
+  --hljs-attribute: #ffcb6b;      // HTML attribute names
+  --hljs-selector: #f07178;       // CSS selectors (class / id / pseudo)
+  --hljs-comment: #6a8595;        // any kind of comment
+  --hljs-punct: var(--color-foreground-secondary);
+}
+
+// Light theme — the pastel palette above bleaches out on white. These
+// values mirror Atom One Light's hues: enough chroma to read on
+// `--color-background-primary` in light without overpowering the
+// surrounding UI.
+:global(.light) {
+  --hljs-keyword: #a626a4;        // saturated purple
+  --hljs-string: #50a14f;         // mid green
+  --hljs-number: #986801;         // dark amber
+  --hljs-property: #4078f2;       // saturated blue
+  --hljs-attribute: #c18401;      // amber
+  --hljs-selector: #e45649;       // red
+  --hljs-comment: #a0a1a7;        // mid gray
+}
 
 .code-block-content.hljs {
   // hljs ships its own .hljs styling — we override here so the surface
@@ -511,7 +532,7 @@ $hljs-punct: var(--color-foreground-secondary);
 .code-block-content {
   :global(.hljs-comment),
   :global(.hljs-quote) {
-    color: $hljs-comment;
+    color: var(--hljs-comment);
     font-style: italic;
   }
 
@@ -522,7 +543,7 @@ $hljs-punct: var(--color-foreground-secondary);
   :global(.hljs-doctag),
   :global(.hljs-meta),
   :global(.hljs-literal) {
-    color: $hljs-keyword;
+    color: var(--hljs-keyword);
   }
 
   :global(.hljs-string),
@@ -530,18 +551,18 @@ $hljs-punct: var(--color-foreground-secondary);
   :global(.hljs-regexp),
   :global(.hljs-template-tag),
   :global(.hljs-template-variable) {
-    color: $hljs-string;
+    color: var(--hljs-string);
   }
 
   :global(.hljs-number),
   :global(.hljs-symbol),
   :global(.hljs-bullet) {
-    color: $hljs-number;
+    color: var(--hljs-number);
   }
 
   :global(.hljs-attr),
   :global(.hljs-attribute) {
-    color: $hljs-attribute;
+    color: var(--hljs-attribute);
   }
 
   :global(.hljs-property),
@@ -551,18 +572,18 @@ $hljs-punct: var(--color-foreground-secondary);
   :global(.hljs-function .hljs-title),
   :global(.hljs-params),
   :global(.hljs-variable) {
-    color: $hljs-property;
+    color: var(--hljs-property);
   }
 
   :global(.hljs-selector-class),
   :global(.hljs-selector-id),
   :global(.hljs-selector-pseudo),
   :global(.hljs-selector-attr) {
-    color: $hljs-selector;
+    color: var(--hljs-selector);
   }
 
   :global(.hljs-punctuation),
   :global(.hljs-operator) {
-    color: $hljs-punct;
+    color: var(--hljs-punct);
   }
 }

@@ -17,7 +17,11 @@
 (mf/defc export-modal*
   {::mf/register modal/components
    ::mf/register-as :tokens/export}
-  []
+  ;; Accepts an optional `tokens-lib` from `modal/show!` so callers
+  ;; outside the workspace (e.g. the viewer's HTML Mode Design Tokens
+  ;; tab) can hand in their own library. When omitted the modal body
+  ;; falls back to `refs/tokens-lib`, preserving the workspace flow.
+  [{:keys [tokens-lib]}]
   [:div {:class (stl/css :modal-overlay)}
    [:div {:class (stl/css :modal-dialog)}
     [:> icon-button* {:class (stl/css :close-btn)
@@ -25,4 +29,4 @@
                       :aria-label (tr "labels.close")
                       :variant "ghost"
                       :icon i/close}]
-    [:> export-modal-body*]]])
+    [:> export-modal-body* {:tokens-lib tokens-lib}]]])

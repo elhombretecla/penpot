@@ -49,8 +49,13 @@
 
 (mf/defc single-file-tab*
   {::mf/private true}
-  []
-  (let [tokens-data (some-> (deref refs/tokens-lib)
+  ;; `tokens-lib` is optional — when omitted the modal pulls the
+  ;; workspace's current file via `refs/tokens-lib`. Viewer-side
+  ;; callers (HTML Mode → Design Tokens) pass it in explicitly because
+  ;; the viewer state doesn't expose `workspace-data`.
+  [{:keys [tokens-lib]}]
+  (let [tlib        (or tokens-lib (deref refs/tokens-lib))
+        tokens-data (some-> tlib
                             (ctob/export-dtcg-json))
         tokens-json (some-> tokens-data
                             (json/encode :key-fn identity :indent 2))
@@ -78,8 +83,9 @@
 
 (mf/defc multi-file-tab*
   {::mf/private true}
-  []
-  (let [files (some->> (deref refs/tokens-lib)
+  [{:keys [tokens-lib]}]
+  (let [tlib  (or tokens-lib (deref refs/tokens-lib))
+        files (some->> tlib
                        (ctob/export-dtcg-multi-file))
         is-disabled (or (empty? files)
                         (every? (fn [[_ v]] (empty? v)) files))
@@ -103,7 +109,7 @@
 
 (mf/defc export-modal-body*
   {::mf/private true}
-  []
+  [{:keys [tokens-lib]}]
   (let [selected-tab* (mf/use-state "single")
         selected-tab  (deref selected-tab*)
 
@@ -128,7 +134,7 @@
                         :on-change on-change-tab}
       (case selected-tab
         "single"
-        [:> single-file-tab* {}]
+        [:> single-file-tab* {:tokens-lib tokens-lib}]
 
         "multiple"
-        [:> multi-file-tab* {}])]]))
+        [:> multi-file-tab* {:tokens-lib tokens-lib}])]]))

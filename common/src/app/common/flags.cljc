@@ -197,7 +197,8 @@
    :enable-inspect-styles
    :enable-feature-fdata-objects-map
    :enable-feature-render-wasm
-   :enable-token-import-from-library])
+   :enable-token-import-from-library
+   :enable-html-mode])
 
 (defn parse
   [& flags]

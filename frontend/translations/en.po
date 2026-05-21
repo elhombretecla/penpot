@@ -5894,6 +5894,90 @@ msgstr "Workspace"
 msgid "viewer.html-mode.toolbar.updated-at"
 msgstr "Updated just now"
 
+#: src/app/main/ui/viewer/html_mode.cljs
+msgid "viewer.html-mode.toolbar.design-tokens"
+msgstr "Design Tokens"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.aria"
+msgstr "Design tokens"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.subtab.preview"
+msgstr "Preview"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.subtab.css"
+msgstr "CSS"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.subtab.code"
+msgstr "Code"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.export-json"
+msgstr "Export JSON"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.categories"
+msgstr "Categories"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.search-placeholder"
+msgstr "Search tokens by name or value…"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.tokens"
+msgstr "tokens"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.copy-all"
+msgstr "Copy all"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.empty"
+msgstr "No design tokens are applied on this page."
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.no-results"
+msgstr "No tokens match your search."
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.css.title"
+msgstr "CSS Custom Properties"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.used-times"
+msgstr "Used %s times"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.category.color"
+msgstr "Colors"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.category.typography"
+msgstr "Typography"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.category.spacing"
+msgstr "Spacing"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.category.radius"
+msgstr "Radius"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.category.dimension"
+msgstr "Dimension"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.category.stroke"
+msgstr "Stroke"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.category.rotation"
+msgstr "Rotation"
+
 #: src/app/main/ui/dashboard/team.cljs:1203
 msgid "webhooks.last-delivery.success"
 msgstr "Last delivery was successful."

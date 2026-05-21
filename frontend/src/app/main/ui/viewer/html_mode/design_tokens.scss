@@ -1,0 +1,508 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) KALEIDOS INC
+
+@use "ds/_sizes.scss" as *;
+@use "ds/typography.scss" as t;
+
+// ---------------------------------------------------------------------------
+// Shell — left sub-sidebar + main pane
+
+.design-tokens-root {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+// ---------------------------------------------------------------------------
+// Left panel (sub-tabs + categories)
+
+.left-panel {
+  flex: none;
+  inline-size: $sz-252;
+  background-color: var(--panel-background-color);
+  border-inline-end: 1px solid var(--panel-border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  // The tab-switcher* renders an empty `tabpanel` section; hide it so
+  // the panel doesn't reserve vertical space for nothing. Same trick
+  // used in `html_mode.scss` for the top-level toolbar tabs.
+  :global([role="tabpanel"]) {
+    display: none;
+  }
+}
+
+.left-panel-tabs {
+  padding-block: var(--sp-xs);
+  padding-inline: var(--sp-s);
+  border-block-end: 1px solid var(--color-border-primary);
+}
+
+// Search input sits between the sub-tabs and the categories list.
+// Acts as the single filter source for both the Preview grid and the
+// Code (CSS) output.
+.left-search {
+  padding-block: var(--sp-s);
+  padding-inline: var(--sp-s);
+  border-block-end: 1px solid var(--color-border-primary);
+}
+
+.left-categories {
+  padding-block: var(--sp-m);
+  padding-inline: var(--sp-s);
+  overflow-y: auto;
+}
+
+.left-categories-title {
+  @include t.use-typography("body-small");
+
+  margin: 0 0 var(--sp-s) 0;
+  padding-inline: var(--sp-xs);
+  color: var(--color-foreground-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.left-categories-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.left-category-link {
+  display: flex;
+  inline-size: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: var(--sp-xs);
+  padding-inline: var(--sp-s);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  text-align: start;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  margin: var(--sp-xs) 0;
+
+  @include t.use-typography("body-medium");
+
+  &:hover {
+    background-color: var(--color-background-secondary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-tertiary);
+    outline-offset: -1px;
+  }
+}
+
+.left-category-link-active {
+  background-color: var(--color-background-quaternary);
+  color: var(--color-accent-tertiary);
+
+  &:hover {
+    background-color: var(--color-background-quaternary);
+  }
+
+  .left-category-count {
+    color: var(--color-accent-tertiary);
+  }
+}
+
+.left-category-count {
+  @include t.use-typography("body-small");
+
+  color: var(--color-foreground-secondary);
+}
+
+// ---------------------------------------------------------------------------
+// Main pane
+
+.main-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  background-color: var(--color-background-primary);
+  overflow: hidden;
+}
+
+.main-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-s);
+  padding-block: var(--sp-s);
+  padding-inline: var(--sp-m);
+  border-block-end: 1px solid var(--color-border-primary);
+  justify-content: flex-end;
+}
+
+.counter {
+  @include t.use-typography("body-small");
+
+  color: var(--color-foreground-secondary);
+  white-space: nowrap;
+}
+
+.css-title {
+  @include t.use-typography("body-medium");
+
+  margin: 0;
+  color: var(--color-foreground-primary);
+  font-weight: 600;
+}
+
+.css-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-s);
+  margin-inline-start: auto;
+}
+
+// "Export JSON" button — hands off to the workspace's `:tokens/export`
+// modal so the viewer user gets the exact same SINGLE FILE / MULTIPLE
+// FILES download flow as the editor.
+
+.export-json-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  padding-block: var(--sp-xs);
+  padding-inline: var(--sp-s);
+  background-color: var(--color-background-primary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 4px;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+
+  @include t.use-typography("body-small");
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-background-tertiary);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Grid scroll + category sections
+
+.grid-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-block: var(--sp-m);
+  padding-inline: var(--sp-m);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xl);
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.category-section {
+  scroll-margin-block-start: var(--sp-s);
+}
+
+.category-title {
+  @include t.use-typography("body-medium");
+
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-s);
+  margin: 0 0 var(--sp-s) 0;
+  color: var(--color-foreground-primary);
+  font-weight: 600;
+}
+
+.category-count {
+  @include t.use-typography("body-small");
+
+  color: var(--color-foreground-secondary);
+  font-weight: 400;
+}
+
+.no-results {
+  @include t.use-typography("body-medium");
+
+  color: var(--color-foreground-secondary);
+}
+
+// ---------------------------------------------------------------------------
+// Token grid
+
+.token-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--sp-s);
+}
+
+.token-grid-colors {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+// ---------------------------------------------------------------------------
+// Token card
+
+.token-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-s);
+  background-color: var(--color-background-primary);
+  border: 1px solid var(--color-background-secondary);
+  border-radius: 8px;
+  padding: var(--sp-s);
+  min-block-size: $sz-64;
+  transition: border-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--color-accent-tertiary);
+  }
+}
+
+.token-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-inline-size: 0;
+  flex: 1;
+}
+
+.token-name {
+  @include t.use-typography("code-font");
+
+  margin: 0;
+  color: var(--color-foreground-primary);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.token-value {
+  @include t.use-typography("code-font");
+
+  margin: 0;
+  color: var(--color-foreground-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.token-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-block-start: var(--sp-xs);
+}
+
+.token-attr-tag {
+  @include t.use-typography("body-small");
+
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--color-background-quaternary);
+  color: var(--color-foreground-secondary);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.token-usage {
+  @include t.use-typography("body-small");
+
+  color: var(--color-foreground-secondary);
+  font-size: 10px;
+}
+
+// ---------------------------------------------------------------------------
+// Token previews (per-category)
+
+.token-preview {
+  flex: none;
+  inline-size: $sz-48;
+  block-size: $sz-48;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background-color: var(--color-background-quaternary);
+  overflow: hidden;
+  border: 1px solid var(--color-background-primary);
+}
+
+.token-preview-color {
+  background-clip: padding-box;
+}
+
+.token-preview-radius {
+  inline-size: $sz-32;
+  block-size: $sz-32;
+  border: 1px solid var(--color-foreground-primary);
+}
+
+.token-preview-bar {
+  background-color: var(--color-foreground-primary);
+  border-radius: 2px;
+  min-block-size: 3px;
+}
+
+.token-preview-stroke {
+  inline-size: $sz-36;
+  background-color: var(--color-foreground-primary);
+}
+
+.token-preview-rotation {
+  inline-size: $sz-24;
+  block-size: $sz-24;
+  border: 1px solid var(--color-foreground-primary);
+}
+
+.token-preview-typo {
+  @include t.use-typography("body-medium");
+
+  color: var(--color-foreground-primary);
+  font-weight: 600;
+}
+
+// ---------------------------------------------------------------------------
+// CSS block
+
+.css-block {
+  flex: 1;
+  margin: 0;
+  padding: var(--sp-m);
+  overflow: auto;
+  color: var(--color-foreground-primary);
+  white-space: pre;
+  font-family: "Roboto Mono", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+
+  // Syntax-highlighting palette is published as CSS variables in
+  // `export_modal.scss` (with `.light` overrides for the light theme).
+  // We just map the `.hljs-…` token classes to the shared vars so the
+  // Design Tokens CSS view stays in sync with the Export modal's
+  // colouring across both themes.
+
+  &.hljs {
+    background-color: var(--color-background-primary);
+    color: var(--color-foreground-primary);
+  }
+
+  :global(.hljs-comment),
+  :global(.hljs-quote) {
+    color: var(--hljs-comment);
+    font-style: italic;
+  }
+
+  :global(.hljs-keyword),
+  :global(.hljs-tag),
+  :global(.hljs-name),
+  :global(.hljs-selector-tag),
+  :global(.hljs-doctag),
+  :global(.hljs-meta),
+  :global(.hljs-literal) {
+    color: var(--hljs-keyword);
+  }
+
+  :global(.hljs-string),
+  :global(.hljs-attribute-value),
+  :global(.hljs-regexp),
+  :global(.hljs-template-tag),
+  :global(.hljs-template-variable) {
+    color: var(--hljs-string);
+  }
+
+  :global(.hljs-number),
+  :global(.hljs-symbol),
+  :global(.hljs-bullet) {
+    color: var(--hljs-number);
+  }
+
+  :global(.hljs-attr),
+  :global(.hljs-attribute) {
+    color: var(--hljs-attribute);
+  }
+
+  :global(.hljs-property),
+  :global(.hljs-built_in),
+  :global(.hljs-title),
+  :global(.hljs-class .hljs-title),
+  :global(.hljs-function .hljs-title),
+  :global(.hljs-params),
+  :global(.hljs-variable) {
+    color: var(--hljs-property);
+  }
+
+  :global(.hljs-selector-class),
+  :global(.hljs-selector-id),
+  :global(.hljs-selector-pseudo),
+  :global(.hljs-selector-attr) {
+    color: var(--hljs-selector);
+  }
+
+  :global(.hljs-punctuation),
+  :global(.hljs-operator) {
+    color: var(--hljs-punct);
+  }
+}
+
+.copy-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  padding-block: var(--sp-xs);
+  padding-inline: var(--sp-s);
+  background-color: var(--color-background-primary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 4px;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+
+  @include t.use-typography("body-small");
+
+  &:hover {
+    background-color: var(--color-background-tertiary);
+  }
+}
+
+.copy-all-btn-active {
+  color: var(--color-accent-tertiary);
+  border-color: var(--color-accent-tertiary);
+}
+
+// ---------------------------------------------------------------------------
+// Empty state
+
+.empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-s);
+  padding: var(--sp-xl);
+  color: var(--color-foreground-secondary);
+  text-align: center;
+}
+
+.empty-description {
+  @include t.use-typography("body-medium");
+
+  margin: 0;
+  max-inline-size: $sz-400;
+}

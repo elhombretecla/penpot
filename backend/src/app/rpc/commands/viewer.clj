@@ -82,7 +82,14 @@
                   (update :data remove-not-allowed-pages (:pages perms))
 
                   :always
-                  (update :data select-keys [:id :options :pages :pages-index :components]))
+                  ;; `:tokens-lib` is included so the HTML Mode Design
+                  ;; Tokens panel can render the inventory and offer
+                  ;; the same DTCG JSON export the workspace exposes
+                  ;; via its tokens sidebar. Design tokens are visual
+                  ;; data — they don't leak anything beyond what the
+                  ;; rendered preview already shows.
+                  (update :data select-keys
+                          [:id :options :pages :pages-index :components :tokens-lib]))
 
         libs    (->> (bfc/get-file-libraries conn file-id)
                      (mapv (fn [{:keys [id] :as lib}]

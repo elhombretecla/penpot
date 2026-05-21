@@ -297,11 +297,12 @@
                           :show-on-click)
              frame-id (some-> (:frame-id params) uuid/parse*)
              share    (:share params)
-             ;; HTML-Mode-specific: which of the two sub-views to
-             ;; show — `workspace` (default) or `prototype`. Lives in
-             ;; the URL so the mode is shareable.
+             ;; HTML-Mode-specific: which of the sub-views to show —
+             ;; `workspace` (default), `prototype`, or `design-tokens`.
+             ;; Lives in the URL so the mode is shareable.
              html-mode (case (:mode params)
-                         "prototype" :prototype
+                         "prototype"     :prototype
+                         "design-tokens" :design-tokens
                          :workspace)]
 
          [:? {}

@@ -366,6 +366,7 @@
   border-radius: $br-6;
   color: var(--color-foreground-primary);
   cursor: pointer;
+  margin-left: auto;
 
   @include use-typography("body-small");
 
