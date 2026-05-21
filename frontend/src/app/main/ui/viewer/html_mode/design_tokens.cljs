@@ -27,6 +27,8 @@
    [app.main.data.html-mode.adapter :as adapter]
    [app.main.data.html-mode.style-parse :as sp]
    [app.main.data.modal :as modal]
+   [app.main.data.notifications :as ntf]
+   [app.main.store :as st]
    [app.main.ui.components.search-bar :refer [search-bar*]]
    [app.main.ui.ds.foundations.assets.icon :refer [icon*] :as i]
    [app.main.ui.ds.layout.tab-switcher :refer [tab-switcher*]]
@@ -215,9 +217,36 @@
   {::mf/private true}
   [{:keys [token format]}]
   (let [{:keys [name attributes usage]} token
-        rendered (display-value token format)]
-    [:article {:class (stl/css :token-card)
-               :data-category (clojure.core/name (:category token))}
+        rendered (display-value token format)
+
+        on-click
+        (mf/use-fn
+         (mf/deps name)
+         (fn [_]
+           (clipboard/to-clipboard name)
+           (st/emit! (ntf/success
+                      (tr "viewer.html-mode.design-tokens.copied")))))
+
+        ;; Keyboard parity with the click — Enter/Space activate the
+        ;; copy too. Plays nice with screen readers because the card
+        ;; is a `<button>`.
+        on-key-down
+        (mf/use-fn
+         (mf/deps name)
+         (fn [^js e]
+           (let [key (.-key e)]
+             (when (or (= key "Enter") (= key " "))
+               (.preventDefault e)
+               (clipboard/to-clipboard name)
+               (st/emit! (ntf/success
+                          (tr "viewer.html-mode.design-tokens.copied")))))))]
+    [:button {:type "button"
+              :class (stl/css :token-card)
+              :data-category (clojure.core/name (:category token))
+              :on-click on-click
+              :on-key-down on-key-down
+              :aria-label (tr "viewer.html-mode.design-tokens.copy-token" name)
+              :title name}
      [:> token-preview* {:token token}]
      [:div {:class (stl/css :token-body)}
       [:p {:class (stl/css :token-name)} name]

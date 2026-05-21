@@ -5919,6 +5919,14 @@ msgid "viewer.html-mode.design-tokens.export-json"
 msgstr "Export JSON"
 
 #: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.copied"
+msgstr "Design Token copied"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.copy-token"
+msgstr "Copy %s"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
 msgid "viewer.html-mode.design-tokens.categories"
 msgstr "Categories"
 

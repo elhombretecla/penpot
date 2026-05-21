@@ -236,16 +236,17 @@
     [:div {:class (stl/css :sitemap-zone)
            :title (tr "viewer.header.sitemap")}
      [:span {:class (stl/css :project-name)} project-name]
+     (let [;; HTML Mode views that navigate per page (no frame
+           ;; picker): the workspace inspector and the design-tokens
+           ;; inventory. Both promote the page name to the brighter
+           ;; foreground colour and hide the frame thumbnails dropdown.
+           page-only? (and (= section :html)
+                           (or (= html-mode :workspace)
+                               (= html-mode :design-tokens)))]
      [:div {:class (stl/css :sitemap-text)}
       [:div {:class (stl/css-case
                      :breadcrumb true
-                     ;; HTML-Mode workspace promotes the page name to
-                     ;; the brighter foreground colour (the slot the
-                     ;; hidden frame selector used to occupy), and
-                     ;; drops the text-ellipsis so the full page name
-                     ;; is readable.
-                     :breadcrumb-html-workspace
-                     (and (= section :html) (= html-mode :workspace)))
+                     :breadcrumb-html-workspace page-only?)
              :on-click open-dropdown}
        [:span  {:class (stl/css :breadcrumb-text)}
         (dm/str file-name " / " page-name)]
@@ -264,17 +265,17 @@
              (get-in file [:data :pages-index id :name])]
             (when (= page-id id)
               [:span {:class (stl/css :icon-check)} deprecated-icon/tick])])]]]
-      ;; In HTML Mode's workspace view the user navigates by page,
-      ;; not by frame — the breadcrumb shouldn't expose the frame
-      ;; thumbnails picker there. Prototype mode keeps it (the user
-      ;; needs to switch boards). Every other viewer section keeps
-      ;; the existing UX too.
-      (when-not (and (= section :html) (= html-mode :workspace))
+      ;; In HTML Mode's workspace and design-tokens views the user
+      ;; navigates by page, not by frame — the breadcrumb shouldn't
+      ;; expose the frame thumbnails picker in either. Prototype mode
+      ;; keeps it (the user needs to switch boards). Every other
+      ;; viewer section keeps the existing UX too.
+      (when-not page-only?
         [:div {:class (stl/css :current-frame)
                :id "current-frame"
                :on-click toggle-thumbnails}
          [:span {:class (stl/css :frame-name)} frame-name]
-         [:span {:class (stl/css :icon)} deprecated-icon/arrow]])]]))
+         [:span {:class (stl/css :icon)} deprecated-icon/arrow]])])]))
 
 (def ^:private penpot-logo-icon
   (deprecated-icon/icon-xref :penpot-logo-icon (stl/css :logo-icon)))
