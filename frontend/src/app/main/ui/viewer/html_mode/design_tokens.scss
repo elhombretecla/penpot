@@ -253,13 +253,17 @@
 
 // ---------------------------------------------------------------------------
 // Token card
+//
+// Cards used to be `<button>` elements with a click-to-copy on the
+// whole surface. They are now containers with a kebab `<button>` in
+// the top-right (`.token-card-actions`) that opens a contextual
+// menu with the copy / usage actions. The card body itself is no
+// longer clickable, so the hover/focus styles target the kebab
+// instead.
 
 .token-card {
-  // Rendered as a real `<button>` so screen readers announce the
-  // copy-to-clipboard action and keyboard users can activate it with
-  // Enter/Space. The default UA button chrome is reset back to the
-  // card look here.
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: flex-start;
   gap: var(--sp-s);
   inline-size: 100%;
@@ -268,23 +272,23 @@
   border-radius: 8px;
   padding: var(--sp-s);
   min-block-size: $sz-64;
-  text-align: start;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
+  position: relative;
   transition: border-color 0.15s ease;
 
   &:hover {
     border-color: var(--color-accent-tertiary);
   }
+}
 
-  &:focus-visible {
-    outline: 2px solid var(--color-accent-tertiary);
-    outline-offset: 2px;
-  }
+// Variant used by the "Used by" sub-view: shows the picked token as
+// a static read-only card (no kebab, no hover affordance) on the
+// left sidebar.
+.token-card-static {
+  grid-template-columns: auto 1fr;
+  border-color: var(--color-accent-tertiary);
 
-  &:active {
-    background-color: var(--color-background-secondary);
+  &:hover {
+    border-color: var(--color-accent-tertiary);
   }
 }
 
@@ -293,7 +297,29 @@
   flex-direction: column;
   gap: 4px;
   min-inline-size: 0;
-  flex: 1;
+}
+
+.token-card-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+// Hide the kebab affordance until the user hovers (or focuses) the
+// card. The button is still in the DOM so screen-reader / keyboard
+// users can tab to it — `opacity: 0` keeps the layout cell sized so
+// the card doesn't reflow on hover. While the menu is open
+// (`.token-card-menu-open`) we keep it visible so the popup feels
+// anchored to a real element.
+.token-card-kebab {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.token-card:hover .token-card-kebab,
+.token-card:focus-within .token-card-kebab,
+.token-card-menu-open .token-card-kebab {
+  opacity: 1;
 }
 
 .token-name {
@@ -523,4 +549,184 @@
 
   margin: 0;
   max-inline-size: $sz-400;
+}
+
+// ---------------------------------------------------------------------------
+// "Used by" sub-view — 3-column layout that replaces the regular grid
+// when the user picks "Used X times" on a card. Column widths mirror
+// `.left-panel` (252px) so the design feels at home next to the rest
+// of HTML Mode.
+
+.usage-root {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+.usage-left {
+  flex: none;
+  inline-size: $sz-252;
+  background-color: var(--panel-background-color);
+  border-inline-end: 1px solid var(--panel-border-color);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+  padding: var(--sp-s);
+  overflow-y: auto;
+}
+
+.usage-back {
+  @include t.use-typography("body-medium");
+
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  align-self: flex-start;
+  padding-block: var(--sp-xs);
+  padding-inline: var(--sp-s);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--color-background-secondary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-tertiary);
+    outline-offset: -1px;
+  }
+
+  // The DS arrow glyph points right; rotate so this reads as
+  // "back".
+  svg {
+    transform: rotate(180deg);
+  }
+}
+
+.usage-elements {
+  flex: none;
+  inline-size: $sz-252;
+  background-color: var(--panel-background-color);
+  border-inline-end: 1px solid var(--panel-border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.usage-elements-title {
+  @include t.use-typography("body-small");
+
+  margin: 0;
+  padding-block: var(--sp-s);
+  padding-inline: var(--sp-m);
+  color: var(--color-foreground-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-block-end: 1px solid var(--color-border-primary);
+}
+
+.usage-elements-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp-xs);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.usage-element {
+  @include t.use-typography("body-medium");
+
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  inline-size: 100%;
+  align-items: center;
+  gap: var(--sp-s);
+  padding-block: var(--sp-xs);
+  padding-inline: var(--sp-s);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  text-align: start;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--color-background-secondary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-tertiary);
+    outline-offset: -1px;
+  }
+}
+
+.usage-element-active {
+  background-color: var(--color-background-quaternary);
+  color: var(--color-accent-tertiary);
+
+  &:hover {
+    background-color: var(--color-background-quaternary);
+  }
+}
+
+.usage-element-name {
+  min-inline-size: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.usage-element-attr {
+  @include t.use-typography("body-small");
+
+  background-color: var(--color-background-quaternary);
+  color: var(--color-foreground-secondary);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.usage-elements-empty {
+  @include t.use-typography("body-medium");
+
+  margin: 0;
+  padding: var(--sp-m);
+  color: var(--color-foreground-secondary);
+}
+
+.usage-canvas {
+  flex: 1;
+  display: flex;
+  background-color: var(--color-background-primary);
+  overflow: hidden;
+}
+
+.usage-iframe {
+  flex: 1;
+  inline-size: 100%;
+  block-size: 100%;
+  border: 0;
+  background-color: var(--color-background-primary);
+  // The iframe content is a preview only — `pointer-events: none`
+  // on its body already blocks input, but disabling them on the
+  // wrapper too prevents the iframe from grabbing focus on click.
+  pointer-events: none;
+}
+
+.usage-iframe-loading {
+  @include t.use-typography("body-medium");
+
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-foreground-secondary);
 }

@@ -5903,6 +5903,46 @@ msgid "viewer.html-mode.design-tokens.aria"
 msgstr "Design tokens"
 
 #: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.card.more-options"
+msgstr "More options"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.card.copy-token"
+msgstr "Copy Design Token"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.card.copy-css"
+msgstr "Copy CSS"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.card.used-times"
+msgstr "Used %s times"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.copied-css"
+msgstr "CSS variable copied"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.usage.back"
+msgstr "Back"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.usage.elements-title"
+msgstr "Used in %s elements"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.usage.no-elements"
+msgstr "No elements use this token on this page."
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.usage.preview-title"
+msgstr "Token usage preview"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.usage.preview-loading"
+msgstr "Rendering preview…"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
 msgid "viewer.html-mode.design-tokens.subtab.preview"
 msgstr "Preview"
 
