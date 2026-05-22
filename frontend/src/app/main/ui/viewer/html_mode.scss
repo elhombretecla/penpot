@@ -186,12 +186,14 @@
   overflow: hidden;
 }
 
-// During a navigate transition the FROM iframe stays stacked at z-1
-// while the TO iframe enters above at z-2; once the WAAPI `finished`
-// promise resolves, the controller drops the transition state and
-// only the base iframe remains.
-.transition-from,
-.transition-to {
+// Each prototype board renders inside a `.board-layer` div. In
+// steady state there's one layer (`data-role="base"`); during a
+// navigate transition there are two (`from` and `to`) and the WAAPI
+// effect animates them via inline transforms / opacity. Reconciling
+// by React key (the frame id) means the surviving layer's iframe
+// persists past the transition without remounting — no srcDoc
+// reload, no flicker.
+.board-layer {
   position: absolute;
   inset: 0;
   inline-size: 100%;
@@ -199,11 +201,12 @@
   will-change: transform, opacity;
 }
 
-.transition-from {
+.board-layer[data-role="base"],
+.board-layer[data-role="from"] {
   z-index: 1;
 }
 
-.transition-to {
+.board-layer[data-role="to"] {
   z-index: 2;
 }
 
@@ -235,8 +238,11 @@
 // Inside a board-stack the iframe becomes a sized layer (not a
 // flex item filling the pane). Apply only when inside the stack so
 // workspace-mode usage (where `.preview-iframe` is a direct child
-// of `.preview-stage`) keeps its original `flex:1` behaviour.
-.board-stack .preview-iframe {
+// of `.preview-stage`) keeps its original `flex:1` behaviour. The
+// preview-iframe is now always wrapped in either a `.board-layer`
+// or `.overlay-frame`, so target both.
+.board-layer .preview-iframe,
+.overlay-frame .preview-iframe {
   position: absolute;
   inset: 0;
   inline-size: 100%;

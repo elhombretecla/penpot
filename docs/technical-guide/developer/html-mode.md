@@ -36,10 +36,22 @@ then shows three panels:
   descendants.
 
 A small toolbar above the iframe shows the last refresh timestamp and
-a "Refresh" button. The preview also auto-refreshes when the HTML
-Mode window regains visibility (throttled to once every 5 seconds), so
-edits made in the workspace tab become visible without manual
-intervention.
+a "Refresh" button, plus a segmented tab switcher to choose the active
+view:
+
+- **Workspace** (default) — the inspector flow described above.
+- **Prototype** — an interactive prototype runner. The currently-
+  selected board renders inside a dedicated stage (with the static
+  pane background around it) and any prototype interactions authored
+  in edit mode (`:click :navigate`, `:open-overlay`, hover-toggle,
+  `:after-delay`, animations, etc.) run natively as HTML / CSS / JS.
+  See [`3.13. HTML Mode — Prototype Interactions`](./html-mode-prototype-interactions.md)
+  for the implementation details.
+- **Design Tokens** — an inventory of the file's design tokens.
+
+The preview also auto-refreshes when the HTML Mode window regains
+visibility (throttled to once every 5 seconds), so edits made in the
+workspace tab become visible without manual intervention.
 
 ## Enabling the feature
 
@@ -106,7 +118,12 @@ HTML Mode is built on three pillars:
    click-to-select postMessage bridge, the LRU cache, and the live
    refresh logic. The sidebar
    (`app.main.ui.viewer.html-mode.sidebar`) is built from the
-   standard Penpot design-system primitives.
+   standard Penpot design-system primitives. A tab switcher in the
+   preview toolbar lets the user flip between **Workspace** (the
+   inspector flow described above), **Prototype** (a fully
+   interactive runner for the file's prototype interactions; see
+   [`3.13. HTML Mode — Prototype Interactions`](./html-mode-prototype-interactions.md)),
+   and **Design Tokens**.
 
 ## Caching and refresh
 
@@ -128,13 +145,30 @@ There are three ways the iframe gets refreshed:
 
 ## Sandbox and security
 
-The iframe is rendered with `sandbox="allow-scripts"` and **no**
-`allow-same-origin`. That combination gives the iframe a unique
-opaque origin: scripts running inside cannot read parent cookies or
-`localStorage`, cannot call Penpot APIs with ambient credentials, and
-cannot navigate the parent tab. Only one script runs in the iframe —
-a tiny click-bridge we inject ourselves that translates element
-clicks into `penpot:html-mode:select` postMessage events.
+The iframe is rendered with
+`sandbox="allow-scripts allow-same-origin"`. Same-origin is required
+so the iframe can fetch fonts and image assets from Penpot's own URLs
+with the user's session credentials — without it the iframe has an
+opaque origin and cross-origin requests for fonts fail, causing text
+shapes to render with system fallback fonts and overflow their
+measured bounds.
+
+Per the HTML spec, `allow-scripts` plus `allow-same-origin` is
+effectively **no sandbox at all**: scripts inside can call
+`parent.document.querySelector('iframe').removeAttribute('sandbox')`
+and escape entirely. The trade-off is accepted because:
+
+- **The only scripts in the iframe are ones we ship.** In Workspace
+  mode it's `select-bridge-script` (click-to-select +
+  hover/distance pills, pan/zoom); in Prototype mode it's
+  `prototype-bridge-script` (interaction dispatch). The converter
+  output is style-only and never emits `<script>` tags.
+- **The converter is vendored and audited.** It's in-tree at
+  `frontend/vendor/penpot-html-converter`, refreshed only via
+  `scripts/sync-html-converter.sh`.
+- **postMessage payloads are validated.** The parent listens only
+  for known `penpot:html-mode:*` and `penpot:prototype:*` message
+  types; anything else is ignored.
 
 The full threat model is documented in the namespace docstring of
 `app.main.ui.viewer.html-mode`.

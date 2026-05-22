@@ -259,31 +259,82 @@
                    [(str (:id shape)) (mapv ->js-interaction xs)]))))
        (into {})))
 
+;; ---------------------------------------------------------------------------
+;; Prototype board doc cache
+;;
+;; LRU cache for `build-prototype-document` output, keyed by
+;; (file-id, page-id, file-revn, frame-id). Eliminates the converter
+;; round-trip on revisits — most relevant for hover-driven
+;; toggle-overlay (rapid open/close cycles) and prev-screen rewinds.
+;; Separate from `app.main.data.html-mode.cache` because that cache
+;; sizes its capacity around large full-page workspace renders;
+;; prototype docs are smaller and a board-heavy file can have many.
+;; The cache is module-level and drops on a full page reload.
+
+(def ^:private prototype-cache-capacity 32)
+
+(defonce ^:private prototype-doc-cache (js/Map.))
+
+(defn- prototype-cache-key
+  [file page frame]
+  (str (:id file) "::" (:id page) "::" (:revn file) "::" (str (:id frame))))
+
+(defn- prototype-cache-get!
+  "Look up a cached doc and refresh its LRU position. Returns nil on
+   miss."
+  [k]
+  (when (.has prototype-doc-cache k)
+    (let [v (.get prototype-doc-cache k)]
+      (.delete prototype-doc-cache k)
+      (.set prototype-doc-cache k v)
+      v)))
+
+(defn- prototype-cache-put!
+  "Insert `[k v]`, evicting the oldest entry if at capacity."
+  [k v]
+  (when (>= (.-size prototype-doc-cache) prototype-cache-capacity)
+    (let [iter   (.keys prototype-doc-cache)
+          oldest (.-value (.next iter))]
+      (when (some? oldest) (.delete prototype-doc-cache oldest))))
+  (.set prototype-doc-cache k v)
+  v)
+
 (defn- render-board-html
   "Resolve a Promise of `{:html :fonts-css :tokens-css :interactions}`
    for the currently-selected board. Mirrors `render-page-html` but
    calls `cv/convertShape` so only the requested frame and its
    descendants are converted. The `:interactions` map is the harvested
    subset of shape interactions that the converter's output covers,
-   keyed by shape-id string."
+   keyed by shape-id string.
+
+   The result is memoised in `prototype-doc-cache` so repeat renders
+   of the same board (hover-toggle ping-ponging an overlay, prev-screen
+   rewinding through history, navigate visiting an already-seen
+   destination) resolve synchronously without re-invoking the
+   converter. Cache invalidates naturally on `revn` advance."
   [file page frame]
-  (let [js-page    (adapter/->js-page page)
-        ctx        (cctx/converter-context file js-page)
-        js-objects (.-objects js-page)
-        js-shape   (unchecked-get js-objects (str (:id frame)))
-        tokens     (.-tokens ctx)
-        tokens-css (when (and tokens (pos? (.-size tokens))) (cv/tokensToCss tokens))
-        ix         (harvest-interactions page)]
-    (-> (js/Promise.all
-         #js [(-> (js/Promise.resolve)
-                  (.then (fn [] (cv/convertShape js-shape js-objects ctx)))
-                  (.then (fn [^js result] (.-html result))))
-              (render-fonts-css-async file page)])
-        (.then (fn [^js parts]
-                 {:html         (aget parts 0)
-                  :fonts-css    (aget parts 1)
-                  :tokens-css   (or tokens-css "")
-                  :interactions ix})))))
+  (let [k (prototype-cache-key file page frame)]
+    (if-let [hit (prototype-cache-get! k)]
+      (js/Promise.resolve hit)
+      (let [js-page    (adapter/->js-page page)
+            ctx        (cctx/converter-context file js-page)
+            js-objects (.-objects js-page)
+            js-shape   (unchecked-get js-objects (str (:id frame)))
+            tokens     (.-tokens ctx)
+            tokens-css (when (and tokens (pos? (.-size tokens))) (cv/tokensToCss tokens))
+            ix         (harvest-interactions page)]
+        (-> (js/Promise.all
+             #js [(-> (js/Promise.resolve)
+                      (.then (fn [] (cv/convertShape js-shape js-objects ctx)))
+                      (.then (fn [^js result] (.-html result))))
+                  (render-fonts-css-async file page)])
+            (.then (fn [^js parts]
+                     (let [result {:html         (aget parts 0)
+                                   :fonts-css    (aget parts 1)
+                                   :tokens-css   (or tokens-css "")
+                                   :interactions ix}]
+                       (prototype-cache-put! k result)
+                       result))))))))
 
 ;; ---------------------------------------------------------------------------
 ;; HTML document wrapper
@@ -1303,8 +1354,33 @@
              (st/emit! (rt/nav :viewer (assoc params :mode tab))))))
         last-refresh* (mf/use-ref (js/Date.now))
         iframe-ref    (mf/use-ref nil)
-        from-iframe-ref (mf/use-ref nil)
-        to-iframe-ref   (mf/use-ref nil)
+        ;; Layer DOM nodes keyed by frame-id. The prototype JSX
+        ;; renders one `.board-layer` div per visible layer (one in
+        ;; steady state, two during a navigate transition) and uses
+        ;; a ref callback that stores the div element in this map.
+        ;; The WAAPI animation effect looks up `from` / `to` by id.
+        ;;
+        ;; React keys on the layer divs match the `frame-id`, so the
+        ;; destination iframe survives the transition→commit
+        ;; reconciliation without unmounting — that is what makes
+        ;; the post-animation hand-off glitch-free (the iframe's
+        ;; srcDoc never changes, the browser never reloads it).
+        layer-refs*   (mf/use-ref #js {})
+        set-layer-ref!
+        (mf/use-fn
+         (fn [id el]
+           (let [m (mf/ref-val layer-refs*)]
+             (if el
+               (unchecked-set m id el)
+               (js-delete m id)))))
+        ;; Tracks which frame's doc `state*` currently holds. The
+        ;; render effect uses this to SKIP its work when the
+        ;; controller has already produced the right doc (e.g. after
+        ;; a navigate / prev-screen / transition commit) — without
+        ;; this guard the effect would reset `:status :loading` and
+        ;; momentarily unmount the iframe right after the controller
+        ;; just mounted it, causing a visible re-mount flicker.
+        rendered-frame-id* (mf/use-ref nil)
         {:keys [status html error updated-at]} (deref state*)
         {:keys [current-frame-id overlays transition]} (deref proto-state*)
         selected (deref selected*)
@@ -1397,6 +1473,9 @@
                                       ;; stack so :prev-screen can rewind to it later, and
                                       ;; sync the URL `?index=` so the viewer header
                                       ;; breadcrumb / thumbnails reflect the new board.
+                                      ;; Mark `rendered-frame-id*` so the render effect
+                                      ;; (which will re-fire when current-frame-id changes)
+                                      ;; skips its work and doesn't unmount the iframe.
                                       (do
                                         (swap! proto-state*
                                                (fn [s]
@@ -1408,6 +1487,7 @@
                                                         :html       doc
                                                         :error      nil
                                                         :updated-at (js/Date.now)})
+                                        (mf/set-ref-val! rendered-frame-id* dest-id)
                                         (nav-to-frame-index! page dest-id))))))
                          (.catch (fn [^js err]
                                    (js/console.warn "Prototype navigate failed:" err))))))
@@ -1467,6 +1547,7 @@
                                                       :html       doc
                                                       :error      nil
                                                       :updated-at (js/Date.now)})
+                                      (mf/set-ref-val! rendered-frame-id* prev)
                                       (nav-to-frame-index! page prev))))
                            (.catch (fn [^js err]
                                      (js/console.warn "Prototype prev-screen failed:" err)))))))
@@ -1525,9 +1606,24 @@
           (reset! state* {:status :design-tokens :html nil :error nil :updated-at nil})
 
           (= mode :prototype)
-          (let [fr (or (find-frame-by-id-str page current-frame-id) frame)]
-            (if (nil? fr)
-              (reset! state* {:status :empty :html nil :error nil :updated-at nil})
+          (let [fr    (or (find-frame-by-id-str page current-frame-id) frame)
+                fr-id (some-> fr :id str)]
+            (cond
+              (nil? fr)
+              (do (mf/set-ref-val! rendered-frame-id* nil)
+                  (reset! state* {:status :empty :html nil :error nil :updated-at nil}))
+
+              ;; The controller (navigate / prev-screen / transition
+              ;; finish!) commits the destination doc to `state*` and
+              ;; stamps `rendered-frame-id*` with the new id. When the
+              ;; effect later re-fires for the same id, skip the work
+              ;; — otherwise we'd reset `:status :loading` and unmount
+              ;; the iframe that the controller (and React's keyed
+              ;; layer reconciliation) just preserved.
+              (and fr-id (= fr-id (mf/ref-val rendered-frame-id*)))
+              nil
+
+              :else
               (do
                 (reset! state* {:status :loading :html nil :error nil :updated-at nil})
                 (-> (render-board-html file page fr)
@@ -1537,7 +1633,8 @@
                                        {:status     :ready
                                         :html       (build-prototype-document parts page fr)
                                         :error      nil
-                                        :updated-at (js/Date.now)}))))
+                                        :updated-at (js/Date.now)})
+                               (mf/set-ref-val! rendered-frame-id* fr-id))))
                     (.catch on-error)))))
 
           :else
@@ -1579,8 +1676,9 @@
     ;; refresh lands on the same board.
     (mf/with-effect [transition]
       (when transition
-        (let [from-el (mf/ref-val from-iframe-ref)
-              to-el   (mf/ref-val to-iframe-ref)
+        (let [refs    (mf/ref-val layer-refs*)
+              from-el (unchecked-get refs (:from-id transition))
+              to-el   (unchecked-get refs (:to-id transition))
               anim    (:animation transition)
               kind    (:animation-type anim)
               dur     (max 1 (or (:duration anim) 300))
@@ -1598,9 +1696,12 @@
                       dest-doc (:to-doc transition)]
                   ;; Commit destination first, then sync URL. The
                   ;; render effect WILL re-trigger when URL changes
-                  ;; `frame` prop, but it'll find the same id already
-                  ;; in `:current-frame-id` and re-render the same
-                  ;; doc — cheap.
+                  ;; `frame` prop, but `rendered-frame-id*` below
+                  ;; tells it the destination is already on screen
+                  ;; so it skips its work — that keeps the
+                  ;; destination iframe (which React preserved via
+                  ;; the layer key) from being unmounted by a stale
+                  ;; `:status :loading` reset.
                   (swap! proto-state*
                          (fn [s]
                            (-> s
@@ -1612,6 +1713,7 @@
                                   :html       dest-doc
                                   :error      nil
                                   :updated-at (js/Date.now)})
+                  (mf/set-ref-val! rendered-frame-id* dest-id)
                   (nav-to-frame-index! page dest-id)))]
           ;; Wait one paint for both iframes to be in the DOM before
           ;; animating — without this, getBoundingClientRect inside
@@ -1805,6 +1907,17 @@
              ;; animations can't visually escape the board area.
              ;; Overlays sit OUTSIDE the clip so they can extend past
              ;; the board edge (matching the SVG viewer's behaviour).
+             ;;
+             ;; The board iframes are rendered as a list of "layers"
+             ;; keyed by `frame-id`. In steady state there's one
+             ;; layer (the current board); during a navigate
+             ;; transition there are two (from + to). When the
+             ;; transition commits, the layers list shrinks back to
+             ;; one — and because React reconciles by key, the
+             ;; surviving layer's DOM element and iframe persist
+             ;; without remounting. The browser never reloads the
+             ;; iframe's srcDoc, eliminating the post-animation
+             ;; flicker that earlier versions had.
              (let [proto-frame    (or (find-frame-by-id-str page current-frame-id) frame)
                    from-frame     (when transition (find-frame-by-id-str page (:from-id transition)))
                    to-frame       (when transition (find-frame-by-id-str page (:to-id transition)))
@@ -1813,6 +1926,17 @@
                    {tw :width th :height} (board-dims (or to-frame proto-frame))
                    stack-w        (if transition (max fw tw) pw)
                    stack-h        (if transition (max fh th) ph)
+                   layers         (if transition
+                                    [{:id (:from-id transition)
+                                      :doc (:from-doc transition)
+                                      :role "from"}
+                                     {:id (:to-id transition)
+                                      :doc (:to-doc transition)
+                                      :role "to"}]
+                                    (when (and current-frame-id html)
+                                      [{:id current-frame-id
+                                        :doc html
+                                        :role "base"}]))
                    needs-backdrop? (some (fn [o]
                                            (let [opts (:options o)]
                                              (or (:background-overlay opts)
@@ -1834,26 +1958,19 @@
                         :style {:width  (str stack-w "px")
                                 :height (str stack-h "px")}}
                   [:div {:class (stl/css :board-clip)}
-                   (if transition
-                     [:div {:class (stl/css :transition-from)
-                            :ref   from-iframe-ref}
+                   (for [{:keys [id doc role]} layers]
+                     [:div {:key id
+                            :class (stl/css :board-layer)
+                            :data-role role
+                            :ref #(set-layer-ref! id %)}
                       [:iframe {:class           (stl/css :preview-iframe)
                                 :title           (tr "viewer.html-mode.iframe-title")
-                                :src-doc         (:from-doc transition)
-                                :sandbox         "allow-scripts allow-same-origin"
-                                :referrer-policy "no-referrer"}]]
-                     [:iframe {:class           (stl/css :preview-iframe)
-                               :ref             iframe-ref
-                               :title           (tr "viewer.html-mode.iframe-title")
-                               :src-doc         html
-                               :sandbox         "allow-scripts allow-same-origin"
-                               :referrer-policy "no-referrer"}])
-                   (when transition
-                     [:div {:class (stl/css :transition-to)
-                            :ref   to-iframe-ref}
-                      [:iframe {:class           (stl/css :preview-iframe)
-                                :title           (tr "viewer.html-mode.iframe-title")
-                                :src-doc         (:to-doc transition)
+                                :src-doc         doc
+                                ;; `allow-same-origin` is required so the iframe can
+                                ;; load fonts and images with the user's session
+                                ;; credentials. The only script inside is ours
+                                ;; (`prototype-bridge-script`). See namespace
+                                ;; docstring for the full threat model.
                                 :sandbox         "allow-scripts allow-same-origin"
                                 :referrer-policy "no-referrer"}]])]
                   (when (seq overlays)

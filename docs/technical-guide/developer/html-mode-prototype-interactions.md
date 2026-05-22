@@ -69,11 +69,13 @@ and a **tiny inline JS runtime inside the iframe**:
 ```
 ┌─ Parent (CLJS, html_mode.cljs) ─────────────────────────────────┐
 │  • State: nav stack, open overlays, current frame, transition   │
-│  • Renders: <iframe srcDoc=...> per board / overlay              │
-│  • Owns animation orchestration (mounts dest iframe, runs WAAPI, │
-│    unmounts source iframe)                                       │
-│  • Receives postMessage events from iframe                       │
-│  • Emits URL `?index=` changes on navigate                       │
+│  • Renders: one .board-layer div per visible board, keyed by    │
+│    frame-id; React reconciliation preserves the dest iframe     │
+│    across the transition→commit hand-off                         │
+│  • Owns animation orchestration (runs WAAPI on the layer divs)  │
+│  • Module-level LRU caches the rendered prototype docs           │
+│  • Receives postMessage events from iframes                      │
+│  • Emits URL `?index=` changes on every prototype navigation     │
 └──┬──────────────────────────────────────────────────────────────┘
    │  initial render emits HTML doc that includes:
    │    <script>window.__PENPOT_INTERACTIONS__ = { id → [ix…] }</script>
@@ -103,18 +105,20 @@ background that **never animates**. Visually:
 
 ```
 .preview-stage          ← static, neutral background, scroll if needed
-   ├── padding (var(--sp-xl)) ─────────────────────────────────┐
-   │                                                            │
-   │     ┌─ .board-stack (W×H = board's selrect) ───────┐      │
-   │     │                                                │      │
-   │     │  ┌─ .board-clip (overflow:hidden) ─────┐     │      │
-   │     │  │  iframe / transition-from / transition-to │      │
-   │     │  └─────────────────────────────────────┘     │      │
-   │     │  .overlay-backdrop / .overlay-frame …        │      │
-   │     │  (siblings of the clip — can extend past)    │      │
-   │     └────────────────────────────────────────────┘      │
-   │                                                            │
-   └────────────────────────────────────────────────────────────┘
+   ├── padding (var(--sp-xl)) ─────────────────────────────────────┐
+   │                                                                │
+   │     ┌─ .board-stack (W×H = board's selrect) ───────────┐      │
+   │     │                                                    │      │
+   │     │  ┌─ .board-clip (overflow:hidden) ────────────┐  │      │
+   │     │  │  .board-layer × N  (keyed by frame-id)     │  │      │
+   │     │  │    data-role=base | from | to              │  │      │
+   │     │  │    └── iframe srcDoc=...                   │  │      │
+   │     │  └────────────────────────────────────────────┘  │      │
+   │     │  .overlay-backdrop / .overlay-frame …            │      │
+   │     │  (siblings of the clip — can extend past)        │      │
+   │     └────────────────────────────────────────────────┘      │
+   │                                                                │
+   └────────────────────────────────────────────────────────────────┘
 ```
 
 Why this matters:
@@ -209,24 +213,42 @@ hit different converter entry points and need different layouts.
    uuids).
 8. `dispatch-prototype-trigger`'s `:navigate` branch:
    - Resolves the destination frame via `find-frame-by-id-str`.
-   - Calls `render-board-html` for the destination, builds the doc.
+   - Calls `render-board-html` for the destination — a **cache hit**
+     for any previously visited board (instant, no converter work),
+     otherwise the converter runs and the result is memoised in
+     `prototype-doc-cache`.
    - Sets `proto-state*`'s `:transition` to
      `{:from-id :from-doc :to-id :to-doc :animation}`.
-9. React re-renders. The JSX detects `transition` is set and renders
-   two iframes inside `.preview-stage` — `.transition-from` (current
-   board) and `.transition-to` (destination).
-10. The `(mf/with-effect [transition] …)` effect runs WAAPI on the
-    parent wrappers using `slide-keyframes` / `push-from-keyframes`.
-    For `:slide :out` it flips z-index inline so the source slides
+9. React re-renders. The JSX builds a `layers` list from the
+   transition state and emits two `.board-layer` divs inside
+   `.board-clip`, keyed by `:from-id` and `:to-id`. Because the
+   `:from-id` matches the previous single-layer's key, React
+   **preserves** that layer's existing div + iframe; only the
+   `:to-id` layer is freshly mounted. Each layer captures its DOM
+   element into the `layer-refs*` map via a ref callback.
+10. The `(mf/with-effect [transition] …)` effect looks up
+    `from-el` / `to-el` from `layer-refs*` by id and runs WAAPI on
+    them using `slide-keyframes` / `push-from-keyframes`. For
+    `:slide :out` it flips z-index inline so the source slides
     visibly off the top of the destination.
 11. `Promise.all([from.finished, to.finished])` resolves. `finish!`:
     - Updates `proto-state*` — commits `:current-frame-id`, pushes
       `:from-id` onto `:nav-stack`, clears `:overlays` and
       `:transition`.
-    - Sets `state*`'s `:html` to the destination doc to avoid a
-      double-render flicker.
+    - Sets `state*`'s `:html` to the destination doc.
+    - Stamps `rendered-frame-id*` with the destination id so the
+      render effect (which re-fires when `:current-frame-id`
+      changes) sees its work is already done and skips its
+      `:status :loading` reset — that's what keeps the destination
+      iframe from being unmounted right after the animation.
     - Emits `(rt/nav :viewer (assoc params :index dest-idx))` so the
-      URL `?index=` reflects the new board.
+      URL `?index=` (and therefore the viewer breadcrumb and
+      thumbnails) reflect the new board.
+12. React reconciles the new render: the layers list shrinks from
+    two entries to one (the `:to-id` layer with role `"base"`).
+    Because the surviving layer's key matches what was already
+    mounted, the destination iframe stays put — **no remount, no
+    srcDoc reload, no flicker**.
 
 ## Key files
 
@@ -239,15 +261,17 @@ All new logic lives here, grouped by concern:
 | Section                            | Purpose                                                                                                                                                        |
 |------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `->js-animation` / `->js-interaction` / `harvest-interactions` | Project Penpot's CLJS interaction data into a JSON map keyed by shape-id string. Camel-cases keys, stringifies uuids and keywords. |
-| `render-board-html`                | Extended return value: now also includes `:interactions` — the harvested map for the page.                                                                     |
+| `prototype-doc-cache` + `prototype-cache-key` / `prototype-cache-get!` / `prototype-cache-put!` | Module-level LRU (`js/Map`, capacity 32) for rendered prototype docs, keyed by `(file-id, page-id, file-revn, frame-id)`. Eliminates the converter round-trip on revisits. |
+| `render-board-html`                | Cache-aware. Returns `{:html :fonts-css :tokens-css :interactions}` from the cache when present, otherwise invokes the converter and memoises the result.       |
 | `prototype-bridge-script`          | Inline JS injected into the prototype iframe. Single delegated click / mouseover / mouseout listener, after-delay scheduler, open-url local dispatch.          |
-| `build-prototype-document`         | Rebuilt to inject `__PENPOT_INTERACTIONS__`, `__PENPOT_ROOT_ID__`, and the bridge script.                                                                      |
+| `build-prototype-document`         | Inject `__PENPOT_INTERACTIONS__`, `__PENPOT_ROOT_ID__`, and the bridge script into the iframe srcDoc.                                                          |
 | `parse-uuid-safe`, `js-animation->cljs`, `js-interaction->cljs`, `read-prototype-trigger` | Parent-side helpers that re-hydrate the JS payload from the iframe into a CLJS interaction map ready to feed back into Penpot helpers. |
-| `find-frame-by-id-str`             | Look up a top-level frame by uuid-string (uses `(:frames page)`).                                                                                              |
+| `find-frame-by-id-str` / `board-dims` | Look up a top-level frame by uuid-string (uses `(:frames page)`); read its canvas-unit `{:width :height}` for sizing the `.board-stack`.                    |
 | `compute-overlay-rect`             | Delegates to `ctsi/calc-overlay-position` — the **same** positioning math the SVG viewer uses (`viewer.cljs` lines 141-212). Mirrors viewer behavior exactly. |
 | `easing->css`                      | Maps `:linear` / `:ease` / `:ease-in` / … to the CSS timing-function string.                                                                                    |
 | `slide-axis-percent` / `slide-keyframes` / `push-from-keyframes` | WAAPI keyframe builders for slide / push animations. Directions are 100% offsets along the right axis.                                |
-| `html-mode-section*` (component)   | Extended with `proto-state*`, `dispatch-prototype-trigger`, two new effects (frame-prop sync, WAAPI animation), an extended postMessage listener, and JSX for the transition stage + overlays. |
+| `nav-to-frame-index!`              | Sync the URL `?index=` to a given frame-id. Called on every controller-driven navigation (animated, instant, prev-screen) so the viewer header breadcrumb / pagination reflect the current board. |
+| `html-mode-section*` (component)   | Hosts the prototype controller: `proto-state*` (nav stack, overlays, transition), `layer-refs*` (ref map keyed by frame-id), `rendered-frame-id*` (guard against redundant render-effect work), `dispatch-prototype-trigger`, frame-prop sync effect, WAAPI animation effect, extended postMessage listener, and the layered JSX (`.board-layer`-per-board) + overlay JSX. |
 
 #### `frontend/src/app/main/ui/viewer/html_mode.scss`
 
@@ -262,12 +286,15 @@ Classes used by prototype mode:
   to visually distinguish the board from the stage. During a
   navigate transition it temporarily expands to fit both boards.
 - `.board-clip` — `overflow:hidden` layer inside the stack that
-  wraps the iframe(s); clips slide / push animations so they can't
-  leak onto the stage.
-- `.transition-from` / `.transition-to` — absolutely-positioned
-  wrappers around the source / destination iframes during a navigate
-  animation. Z-indices `1` / `2` by default; the WAAPI effect flips
-  them inline for `:slide :out`.
+  wraps the board layers; clips slide / push animations so they
+  can't leak onto the stage.
+- `.board-layer` — absolutely-positioned (`inset: 0`) wrapper for
+  each rendered board iframe. One instance in steady state (`data-
+  role="base"`); two during a navigate animation (`from` and `to`).
+  The CSS targets `data-role` to assign z-index: `base` and `from`
+  sit at `z-index: 1`, `to` at `z-index: 2`. The WAAPI effect can
+  flip this inline for `:slide :out` so the source rides above the
+  destination as it slides off.
 - `.overlay-backdrop` — semi-transparent backdrop behind overlays
   that opt in to `:background-overlay` or `:close-click-outside`.
   Sits inside `.board-stack` so it darkens only the board area, not
@@ -275,10 +302,11 @@ Classes used by prototype mode:
 - `.overlay-frame` — absolutely-positioned wrapper for each open
   overlay iframe. Lives outside `.board-clip` (sibling of it) so an
   overlay positioned at the board's edge can extend past it.
-- `.board-stack .preview-iframe` — selector that converts the
-  default flex-filling iframe styling into absolute-positioned-inset
-  for use inside the stack. Workspace mode's `.preview-iframe` (as a
-  direct child of `.preview-stage`) keeps its original behaviour.
+- `.board-layer .preview-iframe`, `.overlay-frame .preview-iframe` —
+  selectors that convert the default flex-filling iframe styling
+  into absolute-positioned-inset for use inside a layer / overlay
+  wrapper. Workspace mode's `.preview-iframe` (as a direct child of
+  `.preview-stage`) keeps its original `flex: 1` behaviour.
 
 ### Read-only references (intentionally not modified)
 
@@ -306,6 +334,40 @@ Classes used by prototype mode:
 
 **No backend changes.** Interactions ship with the regular file /
 page data.
+
+## Smoothness optimizations
+
+The naïve implementation (Promise-per-render + JSX swapping `transition-from` / `transition-to` wrappers + render effect always resetting `:status :loading`) had three visible glitches: a re-render delay each time a board appeared, a flash at the end of navigate animations, and a brief loading state after every controller-driven commit. Three changes eliminate them:
+
+### 1. Module-level prototype doc LRU cache
+
+`render-board-html` checks `prototype-doc-cache` (an LRU `js/Map` keyed by `(file-id, page-id, file-revn, frame-id)`) before invoking the converter. Hits return a resolved Promise synchronously, so:
+
+- Revisiting a board (navigate A → B → A) is instant the second time.
+- Hover-toggle overlays (which rebuild on every mouse-enter) are instant after the first open.
+- Cache invalidates naturally on `revn` advance — any workspace edit produces a new key and old entries age out.
+
+Separate from `app.main.data.html-mode.cache` because that one is sized around large full-page workspace renders (capacity 4); board-level prototype docs are smaller and a flow-heavy file can hit 20+ entries.
+
+### 2. Layered iframes with React keys
+
+Board iframes are rendered as a `for` over a `layers` list — one `.board-layer` div per layer, each keyed by `frame-id`:
+
+- **Steady state**: `[{id: current-frame-id, role: "base"}]` — one layer.
+- **During transition**: `[{id: from-id, role: "from"}, {id: to-id, role: "to"}]` — two layers, animated.
+- **After transition commits**: layers shrinks back to `[{id: to-id, role: "base"}]`.
+
+Because the keys match by frame-id, React's reconciler **preserves** the destination layer's div and its iframe across the transition→commit. The iframe's `srcDoc` never changes, so the browser never reloads it — no white flash, no fonts re-warming. The `from` layer is unmounted (its key disappears from the list), but it was about to go anyway.
+
+The `data-role` attribute drives z-index via SCSS (`base/from → z-index: 1`, `to → z-index: 2`), with an inline override flip for `:slide :out` so the source rides above the destination as it slides off.
+
+A `layer-refs*` ref holds a JS map `{frame-id → div element}`, populated by ref callbacks on each layer. The WAAPI animation effect grabs `from-el` / `to-el` by id, so the animation wiring stays correct even though the layer list is dynamic.
+
+### 3. `rendered-frame-id*` guard on the render effect
+
+The render effect runs whenever `[file, page, mode, current-frame-id]` change. But the controller (navigate / prev-screen / transition finish!) also updates `state*` directly with the destination doc — so when the effect later re-fires, its `(reset! state* {:status :loading})` would momentarily unmount the iframe the controller just placed.
+
+A `rendered-frame-id*` ref tracks which frame's doc currently sits in `state*`. The controller stamps it after every commit; the effect bails out when the new id matches. Result: no spurious `:loading` flash between the controller's commit and the effect's next run.
 
 ## State management
 
@@ -340,15 +402,20 @@ Two effects drive the controller:
    `frame` prop. When it changes externally (header pagination,
    first mount) and no transition is in flight, resets
    `proto-state*` to a clean state for the new board.
-2. **Animation effect** `(mf/with-effect [transition] …)` — runs
-   WAAPI on the `.transition-from` / `.transition-to` wrappers when
-   `:transition` lands. On `finished`, commits the transition,
-   updates `state*`, and emits the URL nav.
+2. **Animation effect** `(mf/with-effect [transition] …)` — looks up
+   the from / to `.board-layer` DOM elements from `layer-refs*` by
+   id and runs WAAPI on them when `:transition` lands. On
+   `finished`, commits the transition, stamps `rendered-frame-id*`,
+   updates `state*`, and emits the URL nav via `nav-to-frame-index!`.
 
 The render effect's deps were changed from
 `[file page mode frame]` to `[file page mode current-frame-id]` for
 prototype mode, so it re-renders when the controller-owned id
-advances (rather than waiting for the URL → prop round trip).
+advances (rather than waiting for the URL → prop round trip). The
+`rendered-frame-id*` guard short-circuits the effect when the
+controller has already put the right doc in `state*`, avoiding the
+brief `:status :loading` reset that would otherwise unmount the
+iframe.
 
 ## Animation translation table
 
@@ -450,12 +517,13 @@ be revisited.
   destination from scratch, so iframe scroll state resets. Adding
   preserve-scroll would require capturing the source iframe's scroll
   position and restoring it on the destination's iframe.
-- **Brief :loading flicker after in-app navigate.** When the URL nav
-  emitted at the end of a transition propagates back as a prop
-  change, the render effect re-fires and resets `state*` to
-  `:loading` for one tick before re-resolving to the same document.
-  An LRU cache keyed by `(file-id, page-id, frame-id)` for board docs
-  would close this gap.
+- **Hover-toggle overlays still mount/unmount the iframe on every
+  cycle.** The doc cache makes the second-and-later open instant
+  (no converter work), but the DOM operation of mounting/unmounting
+  the overlay iframe still has a brief cost. Quick mouse-in /
+  mouse-out cycles can flicker. A persistent overlay pool
+  (`display:none` toggle instead of mount/unmount) would close
+  this gap; deferred until needed.
 - **`harvest-interactions` walks the whole page.** Boards not
   currently rendered still get their interactions in
   `__PENPOT_INTERACTIONS__`. Their `data-id`s aren't in the iframe
