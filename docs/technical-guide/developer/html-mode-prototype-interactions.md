@@ -93,6 +93,79 @@ and a **tiny inline JS runtime inside the iframe**:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Board vs stage isolation
+
+In prototype mode the iframe is **board-sized**, not pane-sized. The
+parent renders a fixed-dimension `.board-stack` (sized to the current
+board's `selrect`) that hosts the iframe(s) and overlays; the
+`.preview-stage` around it is a static "stage" with its own neutral
+background that **never animates**. Visually:
+
+```
+.preview-stage          ← static, neutral background, scroll if needed
+   ├── padding (var(--sp-xl)) ─────────────────────────────────┐
+   │                                                            │
+   │     ┌─ .board-stack (W×H = board's selrect) ───────┐      │
+   │     │                                                │      │
+   │     │  ┌─ .board-clip (overflow:hidden) ─────┐     │      │
+   │     │  │  iframe / transition-from / transition-to │      │
+   │     │  └─────────────────────────────────────┘     │      │
+   │     │  .overlay-backdrop / .overlay-frame …        │      │
+   │     │  (siblings of the clip — can extend past)    │      │
+   │     └────────────────────────────────────────────┘      │
+   │                                                            │
+   └────────────────────────────────────────────────────────────┘
+```
+
+Why this matters:
+
+- **No background flicker.** Earlier versions made the entire iframe
+  pane-sized with the page background painted across the whole pane.
+  During a slide / fade the surrounding background visibly repainted
+  per frame. With the iframe sized to the board, only the board area
+  ever animates.
+- **Interactions are scoped to the board.** Clicking the surrounding
+  stage area does nothing — `:close-click-outside` on overlays only
+  fires when the user clicks the backdrop inside the board.
+- **Animations are clipped.** `.board-clip` is `overflow:hidden`, so
+  a slide that translates the iframe by 100% disappears cleanly at
+  the board's edge instead of leaking onto the stage. Overlays sit
+  OUTSIDE the clip (siblings of it) so they can still extend past
+  the board edge, matching the SVG viewer's behavior.
+- **Different-sized boards transition cleanly.** During a navigate
+  the stack expands to `max(from-w, to-w) × max(from-h, to-h)` so
+  neither board is clipped while sliding; once the transition
+  commits the stack shrinks back to the destination's dimensions.
+
+### Iframe document layout
+
+Each prototype iframe is laid out so the board fills the iframe
+exactly. The converter (`convertShape` in
+`frontend/vendor/penpot-html-converter/src/converter/index.ts`) passes
+`_forceRelative: true` for the root shape, which makes the converter
+emit the board's outer element with `position: relative` + the
+shape's own `width / height` — **no** `left / top` / canvas-coord
+positioning. So the board lands at the body's origin naturally, with
+no translate trick needed:
+
+```html
+<html>
+<body>  <!-- 100% × 100%; page background; no padding -->
+  {converter output}  <!-- position:relative; width:W; height:H -->
+  <script>window.__PENPOT_INTERACTIONS__ = …;</script>
+  <script>window.__PENPOT_ROOT_ID__ = "uuid";</script>
+  <script>prototype-bridge-script</script>
+</body>
+</html>
+```
+
+This is intentionally different from workspace mode's
+`build-document`, which DOES translate by `(-page.minX, -page.minY)`
+— that one calls `convertPage` (not `convertShape`) and renders
+shapes at their absolute canvas coordinates, so the translate is
+needed to bring the off-origin content into view. The two modes
+hit different converter entry points and need different layouts.
+
 ### Why this split
 
 - **Single source of truth in CLJS.** Nav stack, open overlays, and
@@ -178,18 +251,34 @@ All new logic lives here, grouped by concern:
 
 #### `frontend/src/app/main/ui/viewer/html_mode.scss`
 
-New classes appended at the end of the file:
+Classes used by prototype mode:
 
-- `.preview-stage` — relative-positioned wrapper that hosts the base
-  iframe plus any transition / overlay layers.
+- `&[data-mode="prototype"] .preview-stage` — in prototype mode the
+  stage is the static "around the board" area: neutral background,
+  flex-centred, padded, scrollable when the board is bigger than the
+  pane. Workspace mode keeps the original full-pane layout.
+- `.board-stack` — fixed-dimension wrapper (sized inline by JSX to
+  the current board's `selrect` width / height). Has a drop shadow
+  to visually distinguish the board from the stage. During a
+  navigate transition it temporarily expands to fit both boards.
+- `.board-clip` — `overflow:hidden` layer inside the stack that
+  wraps the iframe(s); clips slide / push animations so they can't
+  leak onto the stage.
 - `.transition-from` / `.transition-to` — absolutely-positioned
   wrappers around the source / destination iframes during a navigate
   animation. Z-indices `1` / `2` by default; the WAAPI effect flips
   them inline for `:slide :out`.
 - `.overlay-backdrop` — semi-transparent backdrop behind overlays
   that opt in to `:background-overlay` or `:close-click-outside`.
+  Sits inside `.board-stack` so it darkens only the board area, not
+  the surrounding stage.
 - `.overlay-frame` — absolutely-positioned wrapper for each open
-  overlay iframe.
+  overlay iframe. Lives outside `.board-clip` (sibling of it) so an
+  overlay positioned at the board's edge can extend past it.
+- `.board-stack .preview-iframe` — selector that converts the
+  default flex-filling iframe styling into absolute-positioned-inset
+  for use inside the stack. Workspace mode's `.preview-iframe` (as a
+  direct child of `.preview-stage`) keeps its original behaviour.
 
 ### Read-only references (intentionally not modified)
 

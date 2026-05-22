@@ -17,10 +17,22 @@
   // Prototype mode hides both sidebars (the components are also
   // skipped in JSX, so this is mostly defensive) and lets the preview
   // pane fill the full width — matching the regular viewer
-  // interactions section's edge-to-edge layout.
+  // interactions section's edge-to-edge layout. The preview-stage
+  // becomes a neutral "stage" that centres the board: interactions
+  // and animations are scoped to the board itself (a
+  // `.board-stack` of fixed dimensions), so the surrounding pane
+  // background never repaints during a navigate or overlay action.
   &[data-mode="prototype"] {
     .preview-pane {
       flex: 1 1 100%;
+    }
+
+    .preview-stage {
+      justify-content: center;
+      align-items: center;
+      padding: var(--sp-xl);
+      background-color: var(--color-background-secondary);
+      overflow: auto;
     }
   }
 
@@ -135,17 +147,43 @@
   max-inline-size: $sz-400;
 }
 
-// Prototype-mode stage. Wraps the base iframe, the optional
-// transition-destination iframe, the overlay backdrop, and any open
-// overlay iframes. Positioned relative so absolutely-positioned
-// children (overlays, transition layers) anchor to the preview
-// viewport, not the page.
+// Wraps the base iframe (workspace mode) OR the board-stack (prototype
+// mode). Position:relative so absolutely-positioned children anchor
+// here. In prototype mode the `[data-mode="prototype"]` block above
+// adds centring + the neutral background that surrounds the board.
 .preview-stage {
   position: relative;
   flex: 1;
   inline-size: 100%;
   min-block-size: 0;
   display: flex;
+}
+
+// Prototype-only. Sized inline (by JSX) to the current board's
+// dimensions in canvas units, so the iframe inside matches the board
+// 1:1 — no padding, no flex centring inside the iframe. The drop
+// shadow gives a subtle visual edge between the animated board and
+// the static stage background that surrounds it.
+//
+// During a navigate animation the stack temporarily expands to the
+// max of source / destination dimensions so neither board gets
+// clipped while sliding.
+.board-stack {
+  position: relative;
+  flex: 0 0 auto;
+  background-color: var(--color-background-primary);
+  box-shadow: 0 4px 24px rgb(0 0 0 / 0.12);
+}
+
+// Clipping layer for the animated iframes. `overflow:hidden` keeps
+// slide / push transforms inside the board's bounds so the animated
+// frame can't visually escape onto the stage background. Overlays
+// are siblings of this clip (not inside it) so they retain the
+// ability to extend past the board edge — same as the SVG viewer.
+.board-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
 }
 
 // During a navigate transition the FROM iframe stays stacked at z-1
@@ -171,9 +209,10 @@
 
 // Backdrop behind open overlays. Semi-transparent so the underlying
 // board stays visible (matches the SVG viewer convention; see
-// `.viewer-overlay-background` in viewer.scss). Clicks bubble to the
-// React handler which closes any overlay that opted in to
-// close-click-outside.
+// `.viewer-overlay-background` in viewer.scss). Lives inside
+// `.board-stack` so it darkens ONLY the board area, not the
+// surrounding stage. Clicks bubble to the React handler which closes
+// any overlay that opted in to close-click-outside.
 .overlay-backdrop {
   position: absolute;
   inset: 0;
@@ -191,5 +230,17 @@
   z-index: 11;
   display: block;
   box-shadow: 0 4px 24px rgb(0 0 0 / 0.15);
+}
+
+// Inside a board-stack the iframe becomes a sized layer (not a
+// flex item filling the pane). Apply only when inside the stack so
+// workspace-mode usage (where `.preview-iframe` is a direct child
+// of `.preview-stage`) keeps its original `flex:1` behaviour.
+.board-stack .preview-iframe {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  flex: none;
 }
 

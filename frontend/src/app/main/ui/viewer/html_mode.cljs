@@ -1000,10 +1000,29 @@
 (defn- build-prototype-document
   "Wrap a single board's HTML in a minimal document with reset CSS,
    the page background, the page-scoped fonts + tokens, and the
-   prototype runtime. The runtime reads the harvested interactions
-   map (injected as `window.__PENPOT_INTERACTIONS__`) and dispatches
-   click / hover / after-delay events. Navigate / overlay actions
-   bubble up to the parent via `postMessage`."
+   prototype runtime.
+
+   The iframe IS the board: the body fills 100% × 100% of the iframe
+   (which the parent sizes to the board's dimensions) and the
+   converter's output is rendered directly inside the body. The
+   converter renders the root shape with `position: relative` and
+   `width / height` taken from the shape itself (see
+   `convertShape` in
+   `frontend/vendor/penpot-html-converter/src/converter/index.ts`,
+   which passes `_forceRelative: true`), so the board lands at the
+   body's origin naturally — no translate trick is needed (the
+   workspace mode's `(-minX, -minY)` translate is for full-page
+   renders that include shapes at arbitrary canvas coordinates).
+
+   The page background paints only inside this board-sized iframe —
+   the surrounding pane background is the parent's `.preview-stage`,
+   which doesn't animate. This is what eliminates the background
+   flicker that earlier pane-sized versions had.
+
+   The runtime reads the harvested interactions map (injected as
+   `window.__PENPOT_INTERACTIONS__`) and dispatches click / hover /
+   after-delay events. Navigate / overlay actions bubble up to the
+   parent via `postMessage`."
   [{:keys [html fonts-css tokens-css interactions]} page frame]
   (let [bg       (page-background page)
         title    (or (:name page) "Penpot HTML preview")
@@ -1019,9 +1038,9 @@
      (when (seq fonts-css) (str fonts-css "\n"))
      (when (seq tokens-css) (str tokens-css "\n"))
      "  *, *::before, *::after { box-sizing: border-box; }\n"
-     "  html, body { margin: 0; padding: 0; }\n"
+     "  html, body { margin: 0; padding: 0; inline-size: 100%; block-size: 100%; }\n"
      "  p, h1, h2, h3, h4, h5, h6, ul, ol, dl, li, dd, blockquote, figure, pre { margin: 0; padding: 0; }\n"
-     "  body { min-block-size: 100vh; background: " bg "; display: flex; justify-content: center; align-items: flex-start; padding: 24px; user-select: none; }\n"
+     "  body { background: " bg "; overflow: hidden; user-select: none; position: relative; }\n"
      "</style>\n"
      "</head>\n"
      "<body>\n"
@@ -1144,6 +1163,34 @@
    `:frames` (the top-level frame index used by viewer pagination)."
   [page id-str]
   (some (fn [f] (when (= (str (:id f)) id-str) f)) (:frames page)))
+
+(defn- board-dims
+  "Return `{:width :height}` for a frame in canvas units. Used by the
+   parent JSX to size the `.board-stack` wrapper that isolates the
+   board from the preview pane's surrounding stage background. Falls
+   back to zeros for nil so the JSX can still emit a valid style map
+   (which then renders as nothing — the JSX guards on the wrapping
+   `(when frame ...)` higher up)."
+  [frame]
+  (let [s (:selrect frame)]
+    {:width  (or (:width s) (:width frame) 0)
+     :height (or (:height s) (:height frame) 0)}))
+
+(defn- nav-to-frame-index!
+  "Sync the URL `?index=` to the position of `frame-id-str` in the
+   page's top-level frames index. Must be called on every controller-
+   driven prototype navigation (animated, instant, or prev-screen) so
+   external consumers — the viewer header breadcrumb, the thumbnail
+   pagination, link-sharing — see the current board. No-op when the
+   id isn't a top-level frame, which keeps overlay actions (whose
+   destination may live deeper in `:objects`) from corrupting the
+   query string."
+  [page frame-id-str]
+  (when frame-id-str
+    (when-let [idx (some (fn [[i f]] (when (= (str (:id f)) frame-id-str) i))
+                         (map-indexed vector (:frames page)))]
+      (let [params (rt/get-params @st/state)]
+        (st/emit! (rt/nav :viewer (assoc params :index idx)))))))
 
 (defn- compute-overlay-rect
   "Compute the overlay's position and size relative to the base frame
@@ -1347,7 +1394,9 @@
                                                           :animation anim})
                                       ;; No animation (or no prior doc to animate from):
                                       ;; instant swap. Push the previous board onto the nav
-                                      ;; stack so :prev-screen can rewind to it later.
+                                      ;; stack so :prev-screen can rewind to it later, and
+                                      ;; sync the URL `?index=` so the viewer header
+                                      ;; breadcrumb / thumbnails reflect the new board.
                                       (do
                                         (swap! proto-state*
                                                (fn [s]
@@ -1358,7 +1407,8 @@
                                         (reset! state* {:status     :ready
                                                         :html       doc
                                                         :error      nil
-                                                        :updated-at (js/Date.now)}))))))
+                                                        :updated-at (js/Date.now)})
+                                        (nav-to-frame-index! page dest-id))))))
                          (.catch (fn [^js err]
                                    (js/console.warn "Prototype navigate failed:" err))))))
 
@@ -1416,7 +1466,8 @@
                                       (reset! state* {:status     :ready
                                                       :html       doc
                                                       :error      nil
-                                                      :updated-at (js/Date.now)}))))
+                                                      :updated-at (js/Date.now)})
+                                      (nav-to-frame-index! page prev))))
                            (.catch (fn [^js err]
                                      (js/console.warn "Prototype prev-screen failed:" err)))))))
 
@@ -1542,12 +1593,9 @@
                 (when el (.animate el (clj->js keyframes) opts)))
               finish!
               (fn []
-                (let [params (rt/get-params @st/state)
-                      dest-id (:to-id transition)
-                      from-id (:from-id transition)
-                      dest-doc (:to-doc transition)
-                      idx (some (fn [[i f]] (when (= (str (:id f)) dest-id) i))
-                                (map-indexed vector (:frames page)))]
+                (let [dest-id  (:to-id transition)
+                      from-id  (:from-id transition)
+                      dest-doc (:to-doc transition)]
                   ;; Commit destination first, then sync URL. The
                   ;; render effect WILL re-trigger when URL changes
                   ;; `frame` prop, but it'll find the same id already
@@ -1564,8 +1612,7 @@
                                   :html       dest-doc
                                   :error      nil
                                   :updated-at (js/Date.now)})
-                  (when idx
-                    (st/emit! (rt/nav :viewer (assoc params :index idx))))))]
+                  (nav-to-frame-index! page dest-id)))]
           ;; Wait one paint for both iframes to be in the DOM before
           ;; animating — without this, getBoundingClientRect inside
           ;; the iframe runtime can race with the transform.
@@ -1746,56 +1793,27 @@
 
           :ready
           [:div {:class (stl/css :preview-stage)}
-           ;; Base iframe — always rendered. In prototype mode during
-           ;; a transition this iframe acts as the FROM frame; in any
-           ;; other state it's just the current board / page.
-           (if (and (= mode :prototype) transition)
-             [:div {:class (stl/css :transition-from)
-                    :ref   from-iframe-ref}
-              [:iframe {:class           (stl/css :preview-iframe)
-                        :title           (tr "viewer.html-mode.iframe-title")
-                        :src-doc         (:from-doc transition)
-                        :sandbox         "allow-scripts allow-same-origin"
-                        :referrer-policy "no-referrer"}]]
-             [:iframe {:class           (stl/css :preview-iframe)
-                       :ref             iframe-ref
-                       :title           (tr "viewer.html-mode.iframe-title")
-                       :src-doc         html
-                       ;; `allow-same-origin` is required so the iframe can load
-                       ;; fonts and image assets from Penpot's own URLs with the
-                       ;; user's session credentials — without it the iframe has
-                       ;; an opaque origin and cross-origin requests for fonts
-                       ;; fail, causing text shapes to render with system
-                       ;; fallback fonts and overflow their measured bounds.
-                       ;; The injected script is one we control, so granting
-                       ;; same-origin is acceptable. See the namespace docstring
-                       ;; for the full threat model.
-                       :sandbox         "allow-scripts allow-same-origin"
-                       :referrer-policy "no-referrer"}])
-
-           ;; Transition destination iframe — only mounted during a
-           ;; navigate animation. The WAAPI effect above animates
-           ;; both wrappers; once `finished` resolves, transition is
-           ;; cleared and this branch disappears (the base iframe
-           ;; takes over rendering the destination).
-           (when (and (= mode :prototype) transition)
-             [:div {:class (stl/css :transition-to)
-                    :ref   to-iframe-ref}
-              [:iframe {:class           (stl/css :preview-iframe)
-                        :title           (tr "viewer.html-mode.iframe-title")
-                        :src-doc         (:to-doc transition)
-                        :sandbox         "allow-scripts allow-same-origin"
-                        :referrer-policy "no-referrer"}]])
-
-           ;; Open overlays — each rendered as its own absolutely-
-           ;; positioned iframe over the base board, sharing the same
-           ;; sandbox + interactions runtime. The backdrop sits BEHIND
-           ;; the most recently opened overlay (so older overlays stay
-           ;; clickable), and only renders when at least one open
-           ;; overlay requests `:background-overlay` or
-           ;; `:close-click-outside`.
-           (when (and (= mode :prototype) (seq overlays))
-             (let [needs-backdrop? (some (fn [o]
+           (if (= mode :prototype)
+             ;; Prototype mode: isolate the board in its own sized
+             ;; stack so interactions and animations affect ONLY the
+             ;; board, not the surrounding pane background. The stack
+             ;; is sized to the current board's dimensions; during a
+             ;; transition it expands to fit both from / to boards
+             ;; (using max width / height) so neither gets clipped
+             ;; while sliding. `.board-clip` wraps the animated
+             ;; iframes with `overflow:hidden` so slide / push
+             ;; animations can't visually escape the board area.
+             ;; Overlays sit OUTSIDE the clip so they can extend past
+             ;; the board edge (matching the SVG viewer's behaviour).
+             (let [proto-frame    (or (find-frame-by-id-str page current-frame-id) frame)
+                   from-frame     (when transition (find-frame-by-id-str page (:from-id transition)))
+                   to-frame       (when transition (find-frame-by-id-str page (:to-id transition)))
+                   {pw :width ph :height} (board-dims proto-frame)
+                   {fw :width fh :height} (board-dims (or from-frame proto-frame))
+                   {tw :width th :height} (board-dims (or to-frame proto-frame))
+                   stack-w        (if transition (max fw tw) pw)
+                   stack-h        (if transition (max fh th) ph)
+                   needs-backdrop? (some (fn [o]
                                            (let [opts (:options o)]
                                              (or (:background-overlay opts)
                                                  (:close-click-outside opts))))
@@ -1811,22 +1829,69 @@
                               (into [] (remove (fn [o]
                                                  (get-in o [:options :close-click-outside])))
                                     xs))))]
-               [:*
-                (when needs-backdrop?
-                  [:div {:class (stl/css :overlay-backdrop)
-                         :on-click close-all-bg-or-click}])
-                (for [{:keys [id rect doc]} overlays]
-                  [:div {:key id
-                         :class (stl/css :overlay-frame)
-                         :style {:left   (str (:x rect) "px")
-                                 :top    (str (:y rect) "px")
-                                 :width  (str (:width rect) "px")
-                                 :height (str (:height rect) "px")}}
-                   [:iframe {:class           (stl/css :preview-iframe)
-                             :title           (tr "viewer.html-mode.iframe-title")
-                             :src-doc         doc
-                             :sandbox         "allow-scripts allow-same-origin"
-                             :referrer-policy "no-referrer"}]])]))]
+               (when (and (pos? stack-w) (pos? stack-h))
+                 [:div {:class (stl/css :board-stack)
+                        :style {:width  (str stack-w "px")
+                                :height (str stack-h "px")}}
+                  [:div {:class (stl/css :board-clip)}
+                   (if transition
+                     [:div {:class (stl/css :transition-from)
+                            :ref   from-iframe-ref}
+                      [:iframe {:class           (stl/css :preview-iframe)
+                                :title           (tr "viewer.html-mode.iframe-title")
+                                :src-doc         (:from-doc transition)
+                                :sandbox         "allow-scripts allow-same-origin"
+                                :referrer-policy "no-referrer"}]]
+                     [:iframe {:class           (stl/css :preview-iframe)
+                               :ref             iframe-ref
+                               :title           (tr "viewer.html-mode.iframe-title")
+                               :src-doc         html
+                               :sandbox         "allow-scripts allow-same-origin"
+                               :referrer-policy "no-referrer"}])
+                   (when transition
+                     [:div {:class (stl/css :transition-to)
+                            :ref   to-iframe-ref}
+                      [:iframe {:class           (stl/css :preview-iframe)
+                                :title           (tr "viewer.html-mode.iframe-title")
+                                :src-doc         (:to-doc transition)
+                                :sandbox         "allow-scripts allow-same-origin"
+                                :referrer-policy "no-referrer"}]])]
+                  (when (seq overlays)
+                    [:*
+                     (when needs-backdrop?
+                       [:div {:class (stl/css :overlay-backdrop)
+                              :on-click close-all-bg-or-click}])
+                     (for [{:keys [id rect doc]} overlays]
+                       [:div {:key id
+                              :class (stl/css :overlay-frame)
+                              :style {:left   (str (:x rect) "px")
+                                      :top    (str (:y rect) "px")
+                                      :width  (str (:width rect) "px")
+                                      :height (str (:height rect) "px")}}
+                        [:iframe {:class           (stl/css :preview-iframe)
+                                  :title           (tr "viewer.html-mode.iframe-title")
+                                  :src-doc         doc
+                                  :sandbox         "allow-scripts allow-same-origin"
+                                  :referrer-policy "no-referrer"}]])])]))
+
+             ;; Non-prototype modes (workspace): iframe fills the
+             ;; whole preview-stage as before. Pan/zoom + inspector
+             ;; selection bridge live inside the iframe.
+             [:iframe {:class           (stl/css :preview-iframe)
+                       :ref             iframe-ref
+                       :title           (tr "viewer.html-mode.iframe-title")
+                       :src-doc         html
+                       ;; `allow-same-origin` is required so the iframe can load
+                       ;; fonts and image assets from Penpot's own URLs with the
+                       ;; user's session credentials — without it the iframe has
+                       ;; an opaque origin and cross-origin requests for fonts
+                       ;; fail, causing text shapes to render with system
+                       ;; fallback fonts and overflow their measured bounds.
+                       ;; The injected script is one we control, so granting
+                       ;; same-origin is acceptable. See the namespace docstring
+                       ;; for the full threat model.
+                       :sandbox         "allow-scripts allow-same-origin"
+                       :referrer-policy "no-referrer"}])]
 
           ;; Default branch — exercised on the first render after the
           ;; user navigates AWAY from `:design-tokens`. React renders
