@@ -134,3 +134,62 @@
   margin: 0;
   max-inline-size: $sz-400;
 }
+
+// Prototype-mode stage. Wraps the base iframe, the optional
+// transition-destination iframe, the overlay backdrop, and any open
+// overlay iframes. Positioned relative so absolutely-positioned
+// children (overlays, transition layers) anchor to the preview
+// viewport, not the page.
+.preview-stage {
+  position: relative;
+  flex: 1;
+  inline-size: 100%;
+  min-block-size: 0;
+  display: flex;
+}
+
+// During a navigate transition the FROM iframe stays stacked at z-1
+// while the TO iframe enters above at z-2; once the WAAPI `finished`
+// promise resolves, the controller drops the transition state and
+// only the base iframe remains.
+.transition-from,
+.transition-to {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  will-change: transform, opacity;
+}
+
+.transition-from {
+  z-index: 1;
+}
+
+.transition-to {
+  z-index: 2;
+}
+
+// Backdrop behind open overlays. Semi-transparent so the underlying
+// board stays visible (matches the SVG viewer convention; see
+// `.viewer-overlay-background` in viewer.scss). Clicks bubble to the
+// React handler which closes any overlay that opted in to
+// close-click-outside.
+.overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgb(0 0 0 / 0.2);
+  z-index: 10;
+}
+
+// Each open overlay is its own absolutely-positioned iframe over the
+// base board, sized to the destination frame. The iframe inside
+// inherits `.preview-iframe`'s reset (no border, block display,
+// background colour). `z-index` is above the backdrop so the overlay
+// is interactive even when a backdrop is present.
+.overlay-frame {
+  position: absolute;
+  z-index: 11;
+  display: block;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 0.15);
+}
+

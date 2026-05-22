@@ -14,6 +14,22 @@
    `app.main.data.html-mode.cache`; the cache is invalidated naturally
    when the workspace persists edits (revn advances).
 
+   ## Prototype mode
+
+   The Prototype tab is an interactive prototype runner: shape
+   `:interactions` authored in edit mode are translated to HTML/CSS/JS
+   at preview time. `harvest-interactions` projects the Penpot schema
+   into a JSON map injected as `window.__PENPOT_INTERACTIONS__`; the
+   inline `prototype-bridge-script` reads it and emits `postMessage`
+   events on click/hover/after-delay. The parent CLJS owns navigation
+   stack, open overlays, and animation orchestration — overlays are
+   mounted as their own iframes positioned via the same math the SVG
+   viewer uses (`calc-overlay-position` in
+   `app.common.types.shape.interactions`). Frame transitions briefly
+   mount two iframes side-by-side and animate them via the Web
+   Animations API on the parent wrappers (the iframe contents are
+   opaque to the animation).
+
    ## iframe threat model
 
    The iframe is rendered with `sandbox=\"allow-scripts allow-same-origin\"`.
@@ -58,6 +74,9 @@
   (:require-macros [app.main.style :as stl])
   (:require
    ["@penpot/html-converter" :as cv]
+   [app.common.geom.point :as gpt]
+   [app.common.types.shape.interactions :as ctsi]
+   [app.common.uuid :as uuid]
    [app.main.data.html-mode :as dhtml]
    [app.main.data.html-mode.adapter :as adapter]
    [app.main.data.html-mode.cache :as cache]
@@ -185,32 +204,86 @@
 ;;
 ;; Prototype mode shows ONE board at a time, picked by the URL
 ;; `?index=` query param (driven by the existing viewer header
-;; thumbnails / pagination). The board renders via `convertShape` —
-;; just static HTML; clicks do nothing (no interactions wired here
-;; yet). When `index` changes, the iframe rebuilds with the new
-;; board.
+;; thumbnails / pagination). The board renders via `convertShape`.
+;; Unlike Workspace mode, the iframe runs a tiny JS runtime
+;; (`prototype-bridge-script`) that wires the shape `:interactions`
+;; data to real DOM behavior — click / hover / after-delay / open-url
+;; — and posts back navigate / overlay events to the parent for the
+;; bits that need parent-level orchestration (board swap, overlay
+;; mounting, animations).
+
+(defn- ->js-animation
+  "Project a Penpot animation map onto a JSON-serialisable shape the
+   iframe runtime understands. Keys are camelCased and keywords are
+   stringified, matching the convention used by `adapter/->js-page`."
+  [animation]
+  (when animation
+    (let [t (some-> (:animation-type animation) name)]
+      (cond-> {:type t
+               :duration (:duration animation)
+               :easing (some-> (:easing animation) name)}
+        (= t "slide") (assoc :way (some-> (:way animation) name)
+                             :direction (some-> (:direction animation) name)
+                             :offsetEffect (boolean (:offset-effect animation)))
+        (= t "push")  (assoc :direction (some-> (:direction animation) name))))))
+
+(defn- ->js-interaction
+  "Project a Penpot interaction map onto a JSON-serialisable shape
+   the iframe runtime understands. Only the fields the runtime needs
+   are emitted — unused options stay in the source map."
+  [interaction]
+  (let [pos (:overlay-position interaction)]
+    (cond-> {:eventType  (some-> (:event-type interaction) name)
+             :actionType (some-> (:action-type interaction) name)}
+      (:destination interaction)        (assoc :destination (str (:destination interaction)))
+      (:delay interaction)              (assoc :delay (:delay interaction))
+      (:preserve-scroll interaction)    (assoc :preserveScroll (boolean (:preserve-scroll interaction)))
+      (:url interaction)                (assoc :url (:url interaction))
+      pos                               (assoc :overlayPosition {:x (:x pos) :y (:y pos)})
+      (:overlay-pos-type interaction)   (assoc :overlayPosType (name (:overlay-pos-type interaction)))
+      (some? (:close-click-outside interaction)) (assoc :closeClickOutside (boolean (:close-click-outside interaction)))
+      (some? (:background-overlay interaction))  (assoc :backgroundOverlay (boolean (:background-overlay interaction)))
+      (:position-relative-to interaction) (assoc :positionRelativeTo (str (:position-relative-to interaction)))
+      (:animation interaction)          (assoc :animation (->js-animation (:animation interaction))))))
+
+(defn- harvest-interactions
+  "Walk every shape on the page and return a map
+   `{shape-id-str → [interaction-payload …]}` for use by the iframe
+   runtime. Shapes without interactions are omitted to keep the map
+   small (the runtime checks for membership before reading)."
+  [page]
+  (->> (vals (:objects page))
+       (keep (fn [shape]
+               (let [xs (:interactions shape)]
+                 (when (seq xs)
+                   [(str (:id shape)) (mapv ->js-interaction xs)]))))
+       (into {})))
 
 (defn- render-board-html
-  "Resolve a Promise of `{:html :fonts-css :tokens-css}` for the
-   currently-selected board. Mirrors `render-page-html` but calls
-   `cv/convertShape` so only the requested frame and its descendants
-   are converted."
+  "Resolve a Promise of `{:html :fonts-css :tokens-css :interactions}`
+   for the currently-selected board. Mirrors `render-page-html` but
+   calls `cv/convertShape` so only the requested frame and its
+   descendants are converted. The `:interactions` map is the harvested
+   subset of shape interactions that the converter's output covers,
+   keyed by shape-id string."
   [file page frame]
   (let [js-page    (adapter/->js-page page)
         ctx        (cctx/converter-context file js-page)
         js-objects (.-objects js-page)
         js-shape   (unchecked-get js-objects (str (:id frame)))
         tokens     (.-tokens ctx)
-        tokens-css (when (and tokens (pos? (.-size tokens))) (cv/tokensToCss tokens))]
+        tokens-css (when (and tokens (pos? (.-size tokens))) (cv/tokensToCss tokens))
+        ix         (harvest-interactions page)]
     (-> (js/Promise.all
          #js [(-> (js/Promise.resolve)
                   (.then (fn [] (cv/convertShape js-shape js-objects ctx)))
                   (.then (fn [^js result] (.-html result))))
               (render-fonts-css-async file page)])
         (.then (fn [^js parts]
-                 {:html       (aget parts 0)
-                  :fonts-css  (aget parts 1)
-                  :tokens-css (or tokens-css "")})))))
+                 {:html         (aget parts 0)
+                  :fonts-css    (aget parts 1)
+                  :tokens-css   (or tokens-css "")
+                  :interactions ix})))))
 
 ;; ---------------------------------------------------------------------------
 ;; HTML document wrapper
@@ -762,27 +835,186 @@
 ;; ---------------------------------------------------------------------------
 ;; Prototype mode iframe bridge
 ;;
-;; The prototype bridge is intentionally much smaller than the
-;; workspace bridge: no hover overlays, no selection drill, no pan, no
-;; zoom, no keyboard shortcuts. The only behaviour is "click on an
-;; interactive shape → tell the parent which interactions fired", plus
-;; a one-pass DOM annotation that flags interactive shapes so CSS can
-;; give them a pointer cursor.
+;; The prototype bridge wires Penpot's `:interactions` data (harvested
+;; in CLJS and injected as `window.__PENPOT_INTERACTIONS__`) into real
+;; DOM behaviour. A single delegated listener handles click /
+;; mouseover / mouseout; `:after-delay` fires from a `setTimeout` set
+;; on load; `:open-url` runs locally with `window.open`. Every other
+;; action (`:navigate`, `:open-overlay`, `:toggle-overlay`,
+;; `:close-overlay`, `:prev-screen`) posts back to the parent which
+;; owns the navigation stack and animation orchestration.
+
+(def ^:private prototype-bridge-script
+  ;; Inline JS executed inside the prototype iframe. Reads the
+  ;; interactions map injected as `window.__PENPOT_INTERACTIONS__`
+  ;; (a `{shape-id → [interaction …]}` map) and dispatches per the
+  ;; event-type of each interaction. The script intentionally has no
+  ;; dependency on the parent's runtime — even if the parent never
+  ;; replies, click hotspots still feel responsive (pointer cursor,
+  ;; default-prevented).
+  (str
+   "(function(){"
+   "var IX = (window.__PENPOT_INTERACTIONS__) || {};"
+   "var ROOT_ID = window.__PENPOT_ROOT_ID__ || null;"
+
+   ;; ---- styles: pointer cursor on interactive shapes ----
+   "var s=document.createElement('style');"
+   "s.textContent='[data-prototype-interactive]{cursor:pointer}"
+   "[data-prototype-interactive] *{cursor:pointer}';"
+   "document.head.appendChild(s);"
+
+   ;; ---- helpers ----
+   "function send(p){try{parent.postMessage(p,'*');}catch(e){}}"
+
+   ;; Walk from event.target up collecting [data-id] elements,
+   ;; SHALLOWEST → DEEPEST. Used to find which shapes are under the
+   ;; pointer (innermost wins when multiple have interactions).
+   "function chainAt(t){"
+   "  var chain=[], el=t;"
+   "  while(el && el!==document.body){"
+   "    if(el.nodeType===1 && el.hasAttribute && el.hasAttribute('data-id')){chain.unshift(el);}"
+   "    el=el.parentElement;"
+   "  }"
+   "  return chain;"
+   "}"
+
+   ;; Returns the innermost [data-id] element in the chain that has at
+   ;; least one interaction matching one of the given event types.
+   ;; Returns `{el, interactions}` or null.
+   "function findInteractive(target, eventTypes){"
+   "  var c=chainAt(target);"
+   "  for(var i=c.length-1;i>=0;i--){"
+   "    var id=c[i].getAttribute('data-id');"
+   "    var xs=IX[id];"
+   "    if(!xs) continue;"
+   "    var matched=[];"
+   "    for(var j=0;j<xs.length;j++){"
+   "      if(eventTypes.indexOf(xs[j].eventType)>=0) matched.push(xs[j]);"
+   "    }"
+   "    if(matched.length) return {el:c[i], id:id, interactions:matched};"
+   "  }"
+   "  return null;"
+   "}"
+
+   ;; ---- dispatch one interaction ----
+   ;; Some actions (open-url) run locally; everything else is
+   ;; forwarded to the parent which owns navigation + overlay state.
+   "function dispatch(interaction, sourceId){"
+   "  var a=interaction.actionType;"
+   "  if(a==='open-url' && interaction.url){"
+   "    try{window.open(interaction.url,'_blank','noopener,noreferrer');}catch(e){}"
+   "    return;"
+   "  }"
+   "  send({type:'penpot:prototype:trigger', sourceId:sourceId, interaction:interaction});"
+   "}"
+
+   ;; ---- one-pass DOM annotation: mark interactive shapes ----
+   ;; Done once at load so CSS can apply pointer cursor without
+   ;; per-event work. Only marks shapes with at least one trigger
+   ;; that the runtime supports (click / mouse-* / after-delay is
+   ;; not user-triggered so it doesn't count for cursor purposes).
+   "function annotate(){"
+   "  var ids=Object.keys(IX);"
+   "  for(var i=0;i<ids.length;i++){"
+   "    var xs=IX[ids[i]];"
+   "    var userTriggered=false;"
+   "    for(var j=0;j<xs.length;j++){"
+   "      var et=xs[j].eventType;"
+   "      if(et==='click' || et==='mouse-press' || et==='mouse-over' || et==='mouse-enter' || et==='mouse-leave'){"
+   "        userTriggered=true; break;"
+   "      }"
+   "    }"
+   "    if(!userTriggered) continue;"
+   "    var el=document.querySelector('[data-id=\"'+ids[i]+'\"]');"
+   "    if(el) el.setAttribute('data-prototype-interactive','');"
+   "  }"
+   "}"
+
+   ;; ---- click ----
+   ;; Both :click and :mouse-press fire on a primary click. We treat
+   ;; them as synonyms here — Penpot's data model preserves the
+   ;; distinction so editors can author either, but at runtime in the
+   ;; iframe there's no separable mousedown-vs-click semantic worth
+   ;; differentiating.
+   "document.addEventListener('click',function(e){"
+   "  var hit=findInteractive(e.target, ['click','mouse-press']);"
+   "  if(!hit) return;"
+   "  e.preventDefault(); e.stopPropagation();"
+   "  for(var i=0;i<hit.interactions.length;i++) dispatch(hit.interactions[i], hit.id);"
+   "},{capture:true});"
+
+   ;; ---- hover (mouseover / mouseout) ----
+   ;; We use bubbling mouseover/mouseout instead of mouseenter/leave
+   ;; so a single document-level listener captures everything. The
+   ;; `relatedTarget` check ensures we only fire enter/leave when the
+   ;; pointer actually crosses the interactive boundary.
+   ;;
+   ;; mouse-over fires once on enter (same as mouse-enter for these
+   ;; purposes — Penpot's data model lists it separately but the
+   ;; viewer treats them together). mouse-leave is its inverse and
+   ;; fires on the way out.
+   "function containsRelated(el, related){"
+   "  if(!related) return false;"
+   "  return el.contains(related);"
+   "}"
+   "document.addEventListener('mouseover',function(e){"
+   "  var hit=findInteractive(e.target, ['mouse-enter','mouse-over']);"
+   "  if(!hit) return;"
+   "  if(containsRelated(hit.el, e.relatedTarget)) return;"
+   "  for(var i=0;i<hit.interactions.length;i++) dispatch(hit.interactions[i], hit.id);"
+   "},{capture:true});"
+   "document.addEventListener('mouseout',function(e){"
+   "  var hit=findInteractive(e.target, ['mouse-leave']);"
+   "  if(!hit) return;"
+   "  if(containsRelated(hit.el, e.relatedTarget)) return;"
+   "  for(var i=0;i<hit.interactions.length;i++) dispatch(hit.interactions[i], hit.id);"
+   "},{capture:true});"
+
+   ;; ---- after-delay ----
+   ;; Per Penpot's data model `:after-delay` is only meaningful on
+   ;; frame shapes, and at runtime only on the CURRENTLY DISPLAYED
+   ;; board. We schedule one timer per matching interaction on the
+   ;; root board id; the parent unmounts the iframe (clearing the
+   ;; timer naturally) whenever the board changes, so stale delays
+   ;; never fire against the wrong board.
+   "function scheduleDelays(){"
+   "  if(!ROOT_ID) return;"
+   "  var xs=IX[ROOT_ID];"
+   "  if(!xs) return;"
+   "  for(var i=0;i<xs.length;i++){"
+   "    var ix=xs[i];"
+   "    if(ix.eventType!=='after-delay') continue;"
+   "    var d=Math.max(0, +ix.delay || 0);"
+   "    setTimeout((function(payload){return function(){dispatch(payload, ROOT_ID);};})(ix), d);"
+   "  }"
+   "}"
+
+   "if(document.readyState==='loading'){"
+   "  document.addEventListener('DOMContentLoaded',function(){annotate();scheduleDelays();});"
+   "} else {"
+   "  annotate(); scheduleDelays();"
+   "}"
+
+   "})();"))
 
 (defn- build-prototype-document
   "Wrap a single board's HTML in a minimal document with reset CSS,
-   the page background, and the page-scoped fonts + tokens. Prototype
-   mode is static (no click handlers, no scripts) — it's just the
-   converted board rendered in isolation."
-  [{:keys [html fonts-css tokens-css]} page]
-  (let [bg   (page-background page)
-        name (or (:name page) "Penpot HTML preview")]
+   the page background, the page-scoped fonts + tokens, and the
+   prototype runtime. The runtime reads the harvested interactions
+   map (injected as `window.__PENPOT_INTERACTIONS__`) and dispatches
+   click / hover / after-delay events. Navigate / overlay actions
+   bubble up to the parent via `postMessage`."
+  [{:keys [html fonts-css tokens-css interactions]} page frame]
+  (let [bg       (page-background page)
+        title    (or (:name page) "Penpot HTML preview")
+        ix-json  (.stringify js/JSON (clj->js (or interactions {})))
+        root-id  (str (:id frame))]
     (str
      "<!DOCTYPE html>\n"
      "<html lang=\"en\">\n"
      "<head>\n"
      "<meta charset=\"utf-8\">\n"
-     "<title>" name "</title>\n"
+     "<title>" title "</title>\n"
      "<style>\n"
      (when (seq fonts-css) (str fonts-css "\n"))
      (when (seq tokens-css) (str tokens-css "\n"))
@@ -794,6 +1026,9 @@
      "</head>\n"
      "<body>\n"
      html "\n"
+     "<script>window.__PENPOT_INTERACTIONS__=" ix-json ";"
+     "window.__PENPOT_ROOT_ID__=\"" root-id "\";</script>\n"
+     "<script>" prototype-bridge-script "</script>\n"
      "</body>\n"
      "</html>")))
 
@@ -820,6 +1055,165 @@
         nil))))
 
 ;; ---------------------------------------------------------------------------
+;; Prototype parent-side controller
+;;
+;; The iframe runtime emits `penpot:prototype:trigger` messages. The
+;; parent decides what each action does: navigate swaps the rendered
+;; board (with optional WAAPI animation across two stacked iframes);
+;; open/toggle/close-overlay maintain a list of mounted overlay
+;; iframes positioned via `ctsi/calc-overlay-position` (the same math
+;; the SVG viewer uses); prev-screen pops a nav stack.
+
+(defn- ^:private parse-uuid-safe
+  "Parse a UUID-string or return nil on bad input. Used because the
+   iframe payload only carries strings — Penpot's CLJS API expects
+   real UUIDs for ids."
+  [s]
+  (when (and (string? s) (seq s))
+    (try (uuid/parse s) (catch :default _ nil))))
+
+(defn- js-animation->cljs
+  "Re-hydrate the JS animation payload the runtime returns into the
+   keyword-flavoured CLJS shape the rest of the code expects (matches
+   `app.common.types.shape.interactions/animation-types`)."
+  [^js a]
+  (when a
+    (let [t (obj/get a "type")]
+      (cond-> {:animation-type (keyword t)
+               :duration       (obj/get a "duration")
+               :easing         (some-> (obj/get a "easing") keyword)}
+        (= t "slide")
+        (assoc :way (some-> (obj/get a "way") keyword)
+               :direction (some-> (obj/get a "direction") keyword)
+               :offset-effect (boolean (obj/get a "offsetEffect")))
+        (= t "push")
+        (assoc :direction (some-> (obj/get a "direction") keyword))))))
+
+(defn- js-interaction->cljs
+  "Rebuild a CLJS interaction map matching the Penpot schema from the
+   JS payload the iframe forwarded. UUID-strings are parsed back into
+   uuids and gpt/point is rebuilt so downstream helpers (notably
+   `ctsi/calc-overlay-position`) work without surprise."
+  [^js ix]
+  (let [pos (obj/get ix "overlayPosition")]
+    (cond-> {:event-type  (some-> (obj/get ix "eventType") keyword)
+             :action-type (some-> (obj/get ix "actionType") keyword)}
+      (obj/get ix "destination")
+      (assoc :destination (parse-uuid-safe (obj/get ix "destination")))
+
+      (obj/get ix "delay")
+      (assoc :delay (obj/get ix "delay"))
+
+      (obj/get ix "preserveScroll")
+      (assoc :preserve-scroll (boolean (obj/get ix "preserveScroll")))
+
+      (obj/get ix "url")
+      (assoc :url (obj/get ix "url"))
+
+      pos
+      (assoc :overlay-position (gpt/point (obj/get pos "x") (obj/get pos "y")))
+
+      (obj/get ix "overlayPosType")
+      (assoc :overlay-pos-type (keyword (obj/get ix "overlayPosType")))
+
+      (some? (obj/get ix "closeClickOutside"))
+      (assoc :close-click-outside (boolean (obj/get ix "closeClickOutside")))
+
+      (some? (obj/get ix "backgroundOverlay"))
+      (assoc :background-overlay (boolean (obj/get ix "backgroundOverlay")))
+
+      (obj/get ix "positionRelativeTo")
+      (assoc :position-relative-to (parse-uuid-safe (obj/get ix "positionRelativeTo")))
+
+      (obj/get ix "animation")
+      (assoc :animation (js-animation->cljs (obj/get ix "animation"))))))
+
+(defn- read-prototype-trigger
+  "Recognise a `penpot:prototype:trigger` postMessage payload from the
+   prototype bridge script and return `{:source-id :interaction}` (with
+   `:interaction` rebuilt as a CLJS interaction map), or `nil` if the
+   message isn't one of ours."
+  [^js data]
+  (when (and (some? data) (object? data))
+    (when (= (obj/get data "type") "penpot:prototype:trigger")
+      {:source-id   (obj/get data "sourceId")
+       :interaction (js-interaction->cljs (obj/get data "interaction"))})))
+
+(defn- find-frame-by-id-str
+  "Resolve a frame UUID-string to its shape map by walking the page's
+   `:frames` (the top-level frame index used by viewer pagination)."
+  [page id-str]
+  (some (fn [f] (when (= (str (:id f)) id-str) f)) (:frames page)))
+
+(defn- compute-overlay-rect
+  "Compute the overlay's position and size relative to the base frame
+   (the currently displayed board). Returns `{:x :y :width :height}`
+   in canvas units. Mirrors the viewer's overlay positioning math at
+   `frontend/src/app/main/ui/viewer.cljs:141-212` by delegating to
+   `ctsi/calc-overlay-position`."
+  [page interaction source-shape base-frame dest-frame]
+  (let [objects          (:objects page)
+        relative-to-id   (:position-relative-to interaction)
+        relative-shape   (cond
+                           (some? relative-to-id) (get objects relative-to-id)
+                           (= :manual (:overlay-pos-type interaction)) base-frame
+                           :else source-shape)
+        [pos _snap]      (ctsi/calc-overlay-position
+                          interaction
+                          source-shape
+                          objects
+                          (or relative-shape base-frame)
+                          base-frame
+                          dest-frame
+                          (gpt/point 0 0))
+        srect            (:selrect dest-frame)]
+    {:x      (:x pos)
+     :y      (:y pos)
+     :width  (:width srect)
+     :height (:height srect)}))
+
+(defn- easing->css
+  "Project a Penpot easing keyword to its CSS timing-function string."
+  [easing]
+  (case easing
+    :linear      "linear"
+    :ease        "ease"
+    :ease-in     "ease-in"
+    :ease-out    "ease-out"
+    :ease-in-out "ease-in-out"
+    "ease"))
+
+(defn- slide-axis-percent
+  "Translate a Penpot direction keyword into a `transform` for a 100%
+   offset in that direction. `:right` means the destination starts off-
+   screen to the right and slides in to the left; `:left` mirrored;
+   etc. Used by both slide and push animations."
+  [direction]
+  (case direction
+    :right "translateX(100%)"
+    :left  "translateX(-100%)"
+    :up    "translateY(-100%)"
+    :down  "translateY(100%)"
+    "translateX(100%)"))
+
+(defn- slide-keyframes
+  "Build the keyframe pair for the destination iframe in a `:slide` or
+   `:push` animation. Returns `[from-transform, to-transform]`."
+  [direction]
+  [(slide-axis-percent direction) "translate(0,0)"])
+
+(defn- push-from-keyframes
+  "Keyframes for the origin iframe in a `:push` animation: slides out
+   in the OPPOSITE direction of the destination's entry."
+  [direction]
+  ["translate(0,0)"
+   (slide-axis-percent (case direction
+                         :right :left
+                         :left  :right
+                         :up    :down
+                         :down  :up))])
+
+;; ---------------------------------------------------------------------------
 ;; Auto-refresh throttling
 ;;
 ;; A `js/Date.now ()` timestamp of the last refresh request lives in a
@@ -835,6 +1229,20 @@
   [{:keys [page file frame html-mode]}]
   (let [state*    (mf/use-state {:status :loading :html nil :error nil :updated-at nil})
         selected* (mf/use-state nil)
+        ;; Prototype-mode controller state. Lives alongside `state*`
+        ;; because it spans navigations: even though `state*` resets
+        ;; on every board change, the nav-stack / overlays / in-flight
+        ;; transition must persist.
+        ;;
+        ;; `:current-frame-id` mirrors the URL `?index=` on entry but
+        ;; the controller TAKES OWNERSHIP of it while transitions are
+        ;; in flight — that lets the dual-iframe animation outlive a
+        ;; would-be URL-driven re-render. URL sync happens once the
+        ;; animation finishes (so refresh / link-sharing still work).
+        proto-state* (mf/use-state {:current-frame-id nil
+                                    :nav-stack        []
+                                    :overlays         []
+                                    :transition       nil})
         ;; `html-mode` is `:workspace` (default), `:prototype`, or
         ;; `:design-tokens`. It comes from the URL `?mode=` query param
         ;; so the selection is shareable. The Workspace/Prototype/
@@ -848,7 +1256,10 @@
              (st/emit! (rt/nav :viewer (assoc params :mode tab))))))
         last-refresh* (mf/use-ref (js/Date.now))
         iframe-ref    (mf/use-ref nil)
+        from-iframe-ref (mf/use-ref nil)
+        to-iframe-ref   (mf/use-ref nil)
         {:keys [status html error updated-at]} (deref state*)
+        {:keys [current-frame-id overlays transition]} (deref proto-state*)
         selected (deref selected*)
 
         request-refresh
@@ -886,15 +1297,160 @@
                                #js {:type "penpot:html-mode:select-by-id"
                                     :id id-str
                                     :fit fit?}
-                               "*"))))))]
+                               "*"))))))
+
+        ;; -------------------------------------------------------------
+        ;; Prototype controller — dispatches one interaction trigger.
+        ;; Routed to from the `penpot:prototype:trigger` postMessage
+        ;; listener further down. The iframe runtime handles
+        ;; `:open-url` locally, so this branch never sees it; everything
+        ;; else maps to a piece of `proto-state*`:
+        ;;   :navigate         → render dest doc, start transition
+        ;;   :open-overlay     → render dest doc, append to overlays
+        ;;   :toggle-overlay   → open if absent, close if present
+        ;;   :close-overlay    → drop from overlays (defaults to source)
+        ;;   :prev-screen      → pop nav-stack and rewind
+        ;;
+        ;; Each branch needs the destination frame as a CLJS shape; we
+        ;; resolve it via `find-frame-by-id-str` (root frames) for
+        ;; navigate, and via the full `:objects` map for overlays
+        ;; (overlay destinations are board-typed shapes but not
+        ;; necessarily in :frames).
+        dispatch-prototype-trigger
+        (mf/use-fn
+         (mf/deps file page)
+         (fn [^js msg]
+           (when-let [{:keys [source-id interaction]} (read-prototype-trigger msg)]
+             (let [action       (:action-type interaction)
+                   ps           (deref proto-state*)
+                   base-id      (:current-frame-id ps)
+                   base-frame   (when base-id (find-frame-by-id-str page base-id))
+                   source-uuid  (parse-uuid-safe source-id)
+                   source-shape (when source-uuid (get (:objects page) source-uuid))]
+               (case action
+                 :navigate
+                 (when-let [dest-id (some-> (:destination interaction) str)]
+                   (when-let [dest-frame (find-frame-by-id-str page dest-id)]
+                     (-> (render-board-html file page dest-frame)
+                         (.then (fn [parts]
+                                  (let [doc (build-prototype-document parts page dest-frame)
+                                        anim (:animation interaction)
+                                        ps' (deref proto-state*)
+                                        from-id (:current-frame-id ps')
+                                        from-doc (:html (deref state*))]
+                                    (if (and anim from-doc)
+                                      (swap! proto-state* assoc
+                                             :transition {:from-id from-id
+                                                          :from-doc from-doc
+                                                          :to-id dest-id
+                                                          :to-doc doc
+                                                          :animation anim})
+                                      ;; No animation (or no prior doc to animate from):
+                                      ;; instant swap. Push the previous board onto the nav
+                                      ;; stack so :prev-screen can rewind to it later.
+                                      (do
+                                        (swap! proto-state*
+                                               (fn [s]
+                                                 (-> s
+                                                     (update :nav-stack conj from-id)
+                                                     (assoc :current-frame-id dest-id)
+                                                     (assoc :overlays []))))
+                                        (reset! state* {:status     :ready
+                                                        :html       doc
+                                                        :error      nil
+                                                        :updated-at (js/Date.now)}))))))
+                         (.catch (fn [^js err]
+                                   (js/console.warn "Prototype navigate failed:" err))))))
+
+                 (:open-overlay :toggle-overlay)
+                 (when-let [dest-id (some-> (:destination interaction) str)]
+                   (let [already (some (fn [o] (when (= (:id o) dest-id) o)) (:overlays ps))]
+                     (if (and already (= action :toggle-overlay))
+                       (swap! proto-state* update :overlays
+                              (fn [xs] (into [] (remove (fn [o] (= (:id o) dest-id))) xs)))
+                       (let [dest-frame (or (find-frame-by-id-str page dest-id)
+                                            (get-in page [:objects (parse-uuid-safe dest-id)]))]
+                         (when (and dest-frame base-frame source-shape)
+                           (-> (render-board-html file page dest-frame)
+                               (.then (fn [parts]
+                                        (let [doc (build-prototype-document parts page dest-frame)
+                                              rect (compute-overlay-rect page interaction
+                                                                         source-shape base-frame
+                                                                         dest-frame)]
+                                          (swap! proto-state* update :overlays conj
+                                                 {:id        dest-id
+                                                  :source-id source-id
+                                                  :rect      rect
+                                                  :options   {:close-click-outside (boolean (:close-click-outside interaction))
+                                                              :background-overlay  (boolean (:background-overlay interaction))}
+                                                  :doc       doc}))))
+                               (.catch (fn [^js err]
+                                         (js/console.warn "Prototype open-overlay failed:" err)))))))))
+
+                 :close-overlay
+                 (let [target-id (or (some-> (:destination interaction) str)
+                                     ;; The Penpot UI exposes "Close self" by leaving
+                                     ;; destination empty — the source frame IS the
+                                     ;; overlay being closed, so we identify it by
+                                     ;; matching the source shape's frame id.
+                                     (when source-shape
+                                       (str (or (:frame-id source-shape) (:id source-shape)))))]
+                   (when target-id
+                     (swap! proto-state* update :overlays
+                            (fn [xs] (into [] (remove (fn [o] (= (:id o) target-id))) xs)))))
+
+                 :prev-screen
+                 (let [stack (:nav-stack ps)
+                       prev  (peek stack)]
+                   (when prev
+                     (when-let [prev-frame (find-frame-by-id-str page prev)]
+                       (-> (render-board-html file page prev-frame)
+                           (.then (fn [parts]
+                                    (let [doc (build-prototype-document parts page prev-frame)]
+                                      (swap! proto-state*
+                                             (fn [s]
+                                               (-> s
+                                                   (update :nav-stack pop)
+                                                   (assoc :current-frame-id prev)
+                                                   (assoc :overlays []))))
+                                      (reset! state* {:status     :ready
+                                                      :html       doc
+                                                      :error      nil
+                                                      :updated-at (js/Date.now)}))))
+                           (.catch (fn [^js err]
+                                     (js/console.warn "Prototype prev-screen failed:" err)))))))
+
+                 ;; :open-url is dispatched locally inside the iframe
+                 ;; and never round-trips to the parent — keeping the
+                 ;; user-gesture context intact for pop-up blockers.
+                 nil)))))]
+
+    ;; Sync the prototype controller's `:current-frame-id` to the
+    ;; `frame` prop whenever the prop changes from outside (e.g. the
+    ;; viewer header pagination, or first mount). When the controller
+    ;; itself drove the change — via :navigate / :prev-screen — the
+    ;; URL update arrives one tick later and `:current-frame-id`
+    ;; already matches, so this no-ops. While a transition is in
+    ;; flight we leave state alone; the transition's `finished`
+    ;; handler commits the new id and then the URL.
+    (mf/with-effect [frame mode]
+      (when (and (= mode :prototype) (some? frame))
+        (let [id (str (:id frame))
+              ps (deref proto-state*)]
+          (when (and (nil? (:transition ps))
+                     (not= (:current-frame-id ps) id))
+            (reset! proto-state* {:current-frame-id id
+                                  :nav-stack        []
+                                  :overlays         []
+                                  :transition       nil})))))
 
     ;; Re-render whenever the file, page, mode, or (for prototype
-    ;; Re-render whenever the file, page, mode, or (for prototype
-    ;; mode) the selected frame changes. Workspace caches whole-page
-    ;; renders; prototype renders the currently-picked board via
-    ;; `render-board-html` and wraps it in a static iframe document
-    ;; (no scripts, no click handlers).
-    (mf/with-effect [file page mode frame]
+    ;; mode) the controller's `:current-frame-id` changes. Workspace
+    ;; caches whole-page renders; prototype renders the currently-
+    ;; picked board via `render-board-html` and wraps it in a runtime-
+    ;; equipped iframe document so click/hover/after-delay interactions
+    ;; fire.
+    (mf/with-effect [file page mode current-frame-id]
       (let [cancelled? (volatile! false)
             on-error
             (fn [^js err]
@@ -918,19 +1474,20 @@
           (reset! state* {:status :design-tokens :html nil :error nil :updated-at nil})
 
           (= mode :prototype)
-          (if (nil? frame)
-            (reset! state* {:status :empty :html nil :error nil :updated-at nil})
-            (do
-              (reset! state* {:status :loading :html nil :error nil :updated-at nil})
-              (-> (render-board-html file page frame)
-                  (.then (fn [parts]
-                           (when-not @cancelled?
-                             (reset! state*
-                                     {:status     :ready
-                                      :html       (build-prototype-document parts page)
-                                      :error      nil
-                                      :updated-at (js/Date.now)}))))
-                  (.catch on-error))))
+          (let [fr (or (find-frame-by-id-str page current-frame-id) frame)]
+            (if (nil? fr)
+              (reset! state* {:status :empty :html nil :error nil :updated-at nil})
+              (do
+                (reset! state* {:status :loading :html nil :error nil :updated-at nil})
+                (-> (render-board-html file page fr)
+                    (.then (fn [parts]
+                             (when-not @cancelled?
+                               (reset! state*
+                                       {:status     :ready
+                                        :html       (build-prototype-document parts page fr)
+                                        :error      nil
+                                        :updated-at (js/Date.now)}))))
+                    (.catch on-error)))))
 
           :else
           (do
@@ -947,15 +1504,126 @@
         (fn [] (vreset! cancelled? true))))
 
     ;; Listen for shape-selection messages from the workspace-mode
-    ;; iframe. Prototype mode posts nothing — the iframe is static.
+    ;; iframe AND for `:prototype:trigger` messages from the prototype
+    ;; iframe. A single window-level listener handles both so we don't
+    ;; pay for two registrations.
     (mf/with-effect []
       (let [handler (fn [^js e]
-                      (let [result (read-selected (.-data e))]
+                      (let [data (.-data e)
+                            result (read-selected data)]
                         (cond
                           (= result ::deselect) (reset! selected* nil)
-                          (some? result)        (reset! selected* result))))]
+                          (some? result)        (reset! selected* result)
+                          :else                 (dispatch-prototype-trigger data))))]
         (.addEventListener js/window "message" handler)
         (fn [] (.removeEventListener js/window "message" handler))))
+
+    ;; Animation orchestration. When `:transition` lands in proto-state*,
+    ;; React renders BOTH the from- and to-iframes stacked in a
+    ;; transition stage (see the JSX further down). This effect runs
+    ;; the WAAPI animation against the wrapper divs, waits for it to
+    ;; finish, then commits the new board into `:current-frame-id`
+    ;; (which in turn drives the regular render effect to produce the
+    ;; final single-iframe state) and syncs the URL `?index=` so a
+    ;; refresh lands on the same board.
+    (mf/with-effect [transition]
+      (when transition
+        (let [from-el (mf/ref-val from-iframe-ref)
+              to-el   (mf/ref-val to-iframe-ref)
+              anim    (:animation transition)
+              kind    (:animation-type anim)
+              dur     (max 1 (or (:duration anim) 300))
+              easing  (easing->css (:easing anim))
+              opts    #js {:duration dur :easing easing :fill "both"}
+              raf     (volatile! nil)
+              promises (volatile! [])
+              animate!
+              (fn [^js el keyframes]
+                (when el (.animate el (clj->js keyframes) opts)))
+              finish!
+              (fn []
+                (let [params (rt/get-params @st/state)
+                      dest-id (:to-id transition)
+                      from-id (:from-id transition)
+                      dest-doc (:to-doc transition)
+                      idx (some (fn [[i f]] (when (= (str (:id f)) dest-id) i))
+                                (map-indexed vector (:frames page)))]
+                  ;; Commit destination first, then sync URL. The
+                  ;; render effect WILL re-trigger when URL changes
+                  ;; `frame` prop, but it'll find the same id already
+                  ;; in `:current-frame-id` and re-render the same
+                  ;; doc — cheap.
+                  (swap! proto-state*
+                         (fn [s]
+                           (-> s
+                               (update :nav-stack conj from-id)
+                               (assoc :current-frame-id dest-id)
+                               (assoc :overlays [])
+                               (assoc :transition nil))))
+                  (reset! state* {:status     :ready
+                                  :html       dest-doc
+                                  :error      nil
+                                  :updated-at (js/Date.now)})
+                  (when idx
+                    (st/emit! (rt/nav :viewer (assoc params :index idx))))))]
+          ;; Wait one paint for both iframes to be in the DOM before
+          ;; animating — without this, getBoundingClientRect inside
+          ;; the iframe runtime can race with the transform.
+          (vreset! raf
+                   (js/requestAnimationFrame
+                    (fn []
+                      ;; Slide direction conventions mirror the SVG viewer
+                      ;; (interactions.cljs lines 319-618):
+                      ;;   :way :in  → destination slides IN from off-screen,
+                      ;;               source stays put
+                      ;;   :way :out → source slides OUT exposing destination
+                      ;;               (destination is already in place, no
+                      ;;               animation on it)
+                      ;; Push always moves both frames in lockstep.
+                      ;;
+                      ;; For `:way :out` we need the source to be ON TOP of the
+                      ;; destination so the user sees it slide off — flip the
+                      ;; stacking order via inline style. (The default CSS gives
+                      ;; `.transition-to` z-index:2, which is correct for
+                      ;; everything except `:slide :out`.)
+                      (when (and (= kind :slide) (= :out (:way anim)))
+                        (when from-el (set! (.. from-el -style -zIndex) "3"))
+                        (when to-el   (set! (.. to-el -style -zIndex) "1")))
+                      (let [from-anim
+                            (case kind
+                              :dissolve (animate! from-el [{:opacity 1} {:opacity 0}])
+                              :slide    (when (= :out (:way anim))
+                                          (animate! from-el [{:transform "translate(0,0)"}
+                                                             {:transform (slide-axis-percent (:direction anim))}]))
+                              :push     (let [[a b] (push-from-keyframes (:direction anim))]
+                                          (animate! from-el [{:transform a} {:transform b}]))
+                              nil)
+                            to-anim
+                            (case kind
+                              :dissolve (animate! to-el [{:opacity 0} {:opacity 1}])
+                              :slide    (when (not= :out (:way anim))
+                                          (let [[a b] (slide-keyframes (:direction anim))]
+                                            (animate! to-el [{:transform a} {:transform b}])))
+                              :push     (let [[a b] (slide-keyframes (:direction anim))]
+                                          (animate! to-el [{:transform a} {:transform b}]))
+                              nil)
+                            ps (cond-> []
+                                 from-anim (conj (.-finished from-anim))
+                                 to-anim   (conj (.-finished to-anim)))]
+                        (vreset! promises ps)
+                        (if (seq ps)
+                          (-> (js/Promise.all (clj->js ps))
+                              (.then finish!)
+                              (.catch (fn [_] (finish!))))
+                          (finish!))))))
+          ;; Cleanup: cancel a queued RAF if the transition state is
+          ;; replaced before it fires. In-flight WAAPI animations
+          ;; complete on their own; their `finished` Promise resolution
+          ;; is harmless to a stale `finish!` because `swap!` is
+          ;; idempotent on the current state.
+          (fn []
+            (when-let [r @raf]
+              (js/cancelAnimationFrame r))))))
 
     ;; Auto-refresh when the HTML Mode window regains visibility, but
     ;; only if it has been more than `auto-refresh-throttle-ms` since the
@@ -1077,21 +1745,88 @@
             (or error (tr "errors.generic"))]]
 
           :ready
-          [:iframe {:class           (stl/css :preview-iframe)
-                    :ref             iframe-ref
-                    :title           (tr "viewer.html-mode.iframe-title")
-                    :src-doc         html
-                    ;; `allow-same-origin` is required so the iframe can load
-                    ;; fonts and image assets from Penpot's own URLs with the
-                    ;; user's session credentials — without it the iframe has
-                    ;; an opaque origin and cross-origin requests for fonts
-                    ;; fail, causing text shapes to render with system
-                    ;; fallback fonts and overflow their measured bounds.
-                    ;; The injected script is one we control, so granting
-                    ;; same-origin is acceptable. See the namespace docstring
-                    ;; for the full threat model.
-                    :sandbox         "allow-scripts allow-same-origin"
-                    :referrer-policy "no-referrer"}]
+          [:div {:class (stl/css :preview-stage)}
+           ;; Base iframe — always rendered. In prototype mode during
+           ;; a transition this iframe acts as the FROM frame; in any
+           ;; other state it's just the current board / page.
+           (if (and (= mode :prototype) transition)
+             [:div {:class (stl/css :transition-from)
+                    :ref   from-iframe-ref}
+              [:iframe {:class           (stl/css :preview-iframe)
+                        :title           (tr "viewer.html-mode.iframe-title")
+                        :src-doc         (:from-doc transition)
+                        :sandbox         "allow-scripts allow-same-origin"
+                        :referrer-policy "no-referrer"}]]
+             [:iframe {:class           (stl/css :preview-iframe)
+                       :ref             iframe-ref
+                       :title           (tr "viewer.html-mode.iframe-title")
+                       :src-doc         html
+                       ;; `allow-same-origin` is required so the iframe can load
+                       ;; fonts and image assets from Penpot's own URLs with the
+                       ;; user's session credentials — without it the iframe has
+                       ;; an opaque origin and cross-origin requests for fonts
+                       ;; fail, causing text shapes to render with system
+                       ;; fallback fonts and overflow their measured bounds.
+                       ;; The injected script is one we control, so granting
+                       ;; same-origin is acceptable. See the namespace docstring
+                       ;; for the full threat model.
+                       :sandbox         "allow-scripts allow-same-origin"
+                       :referrer-policy "no-referrer"}])
+
+           ;; Transition destination iframe — only mounted during a
+           ;; navigate animation. The WAAPI effect above animates
+           ;; both wrappers; once `finished` resolves, transition is
+           ;; cleared and this branch disappears (the base iframe
+           ;; takes over rendering the destination).
+           (when (and (= mode :prototype) transition)
+             [:div {:class (stl/css :transition-to)
+                    :ref   to-iframe-ref}
+              [:iframe {:class           (stl/css :preview-iframe)
+                        :title           (tr "viewer.html-mode.iframe-title")
+                        :src-doc         (:to-doc transition)
+                        :sandbox         "allow-scripts allow-same-origin"
+                        :referrer-policy "no-referrer"}]])
+
+           ;; Open overlays — each rendered as its own absolutely-
+           ;; positioned iframe over the base board, sharing the same
+           ;; sandbox + interactions runtime. The backdrop sits BEHIND
+           ;; the most recently opened overlay (so older overlays stay
+           ;; clickable), and only renders when at least one open
+           ;; overlay requests `:background-overlay` or
+           ;; `:close-click-outside`.
+           (when (and (= mode :prototype) (seq overlays))
+             (let [needs-backdrop? (some (fn [o]
+                                           (let [opts (:options o)]
+                                             (or (:background-overlay opts)
+                                                 (:close-click-outside opts))))
+                                         overlays)
+                   close-all-bg-or-click
+                   (fn []
+                     ;; Click on backdrop: close every overlay that
+                     ;; opted into close-click-outside. Mirrors the
+                     ;; viewer's `on-click` handler in
+                     ;; `viewer.cljs:157-164`.
+                     (swap! proto-state* update :overlays
+                            (fn [xs]
+                              (into [] (remove (fn [o]
+                                                 (get-in o [:options :close-click-outside])))
+                                    xs))))]
+               [:*
+                (when needs-backdrop?
+                  [:div {:class (stl/css :overlay-backdrop)
+                         :on-click close-all-bg-or-click}])
+                (for [{:keys [id rect doc]} overlays]
+                  [:div {:key id
+                         :class (stl/css :overlay-frame)
+                         :style {:left   (str (:x rect) "px")
+                                 :top    (str (:y rect) "px")
+                                 :width  (str (:width rect) "px")
+                                 :height (str (:height rect) "px")}}
+                   [:iframe {:class           (stl/css :preview-iframe)
+                             :title           (tr "viewer.html-mode.iframe-title")
+                             :src-doc         doc
+                             :sandbox         "allow-scripts allow-same-origin"
+                             :referrer-policy "no-referrer"}]])]))]
 
           ;; Default branch — exercised on the first render after the
           ;; user navigates AWAY from `:design-tokens`. React renders
