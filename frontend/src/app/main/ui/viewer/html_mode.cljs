@@ -81,7 +81,9 @@
    [app.main.data.html-mode.adapter :as adapter]
    [app.main.data.html-mode.cache :as cache]
    [app.main.data.html-mode.converter-ctx :as cctx]
+   [app.main.data.viewer :as dv]
    [app.main.fonts :as fonts]
+   [app.main.refs :as refs]
    [app.main.router :as rt]
    [app.main.store :as st]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
@@ -1384,6 +1386,17 @@
         {:keys [status html error updated-at]} (deref state*)
         {:keys [current-frame-id overlays transition]} (deref proto-state*)
         selected (deref selected*)
+        ;; Subscribe to the shared viewer zoom (the same value the
+        ;; SVG viewer renders at). The header's zoom widget dispatches
+        ;; `dv/increase-zoom` / `dv/decrease-zoom` / `dv/reset-zoom` /
+        ;; `dv/zoom-to-fit` / `dv/zoom-to-fill`, all of which mutate
+        ;; this. We project it onto the rendered content via a CSS
+        ;; `zoom` property on a wrapper div — that scales layout AND
+        ;; visual (unlike `transform: scale` which only scales
+        ;; visual), so the surrounding `.preview-stage`'s
+        ;; `overflow: auto` correctly engages when zoomed past 100%.
+        viewer-local (mf/deref refs/viewer-local)
+        zoom         (or (:zoom viewer-local) 1)
 
         request-refresh
         (mf/use-fn
@@ -1789,15 +1802,26 @@
         (.addEventListener js/document "visibilitychange" handler)
         (fn [] (.removeEventListener js/document "visibilitychange" handler))))
 
-    ;; Forward Ctrl/Cmd + `+`/`=`/`-`/`0` to the iframe and swallow the
-    ;; browser default. Without this, the host browser interprets the
-    ;; combo as page zoom and the iframe never gets a chance to act on
-    ;; it — `preventDefault` inside the sandboxed document only works
-    ;; when keyboard focus lives there, and most of the time focus is
-    ;; on the parent app (sidebar, layers tree, etc).
+    ;; Reset zoom to 100% whenever the user enters HTML Mode (mount)
+    ;; OR flips between the Workspace and Prototype tabs. The viewer's
+    ;; `:viewer-local :zoom` is shared with the SVG viewer sections, so
+    ;; without this a zoom level set in (say) Interactions mode would
+    ;; carry over into HTML Mode and surprise the user. Design Tokens
+    ;; mode renders its own layout (no iframe, no zoom), so we skip it.
+    (mf/with-effect [mode]
+      (when (or (= mode :prototype) (= mode :workspace))
+        (st/emit! dv/reset-zoom)))
+
+    ;; Catch Ctrl/Cmd + `+`/`=`/`-`/`0` keyboard shortcuts and dispatch
+    ;; the same `dv/*` zoom actions the header widget uses, so the
+    ;; CSS-`zoom` wrapper around the rendered content updates in sync
+    ;; (the widget's percent label stays accurate, and Fit/Fill via
+    ;; the widget still compose correctly). preventDefault swallows
+    ;; the browser's native page-zoom — otherwise the host page zooms
+    ;; instead.
     ;;
-    ;; The handler is a no-op if the user is typing in an input /
-    ;; textarea / contenteditable, so it doesn't break form inputs.
+    ;; No-op when focus is inside an input / textarea / contenteditable
+    ;; so form fields keep working.
     (mf/with-effect []
       (let [editable? (fn [^js el]
                         (when el
@@ -1811,18 +1835,13 @@
                                  (not (editable? (.-target e))))
                         (let [key (.-key e)
                               action (case key
-                                       ("+" "=") "in"
-                                       ("-" "_") "out"
-                                       "0"       "reset"
+                                       ("+" "=") dv/increase-zoom
+                                       ("-" "_") dv/decrease-zoom
+                                       "0"       dv/reset-zoom
                                        nil)]
                           (when action
                             (.preventDefault e)
-                            (when-let [iframe (mf/ref-val iframe-ref)]
-                              (when-let [win (.-contentWindow iframe)]
-                                (.postMessage win
-                                              #js {:type "penpot:html-mode:zoom"
-                                                   :action action}
-                                              "*")))))))]
+                            (st/emit! action)))))]
         (.addEventListener js/window "keydown" handler true)
         (fn [] (.removeEventListener js/window "keydown" handler true))))
 
@@ -1895,6 +1914,8 @@
 
           :ready
           [:div {:class (stl/css :preview-stage)}
+           [:div {:class (stl/css :zoom-container)
+                  :style {:zoom zoom}}
            (if (= mode :prototype)
              ;; Prototype mode: isolate the board in its own sized
              ;; stack so interactions and animations affect ONLY the
@@ -2008,7 +2029,7 @@
                        ;; same-origin is acceptable. See the namespace docstring
                        ;; for the full threat model.
                        :sandbox         "allow-scripts allow-same-origin"
-                       :referrer-policy "no-referrer"}])]
+                       :referrer-policy "no-referrer"}])]]
 
           ;; Default branch — exercised on the first render after the
           ;; user navigates AWAY from `:design-tokens`. React renders

@@ -36,6 +36,17 @@
     }
   }
 
+  // Workspace mode keeps the full-pane iframe layout but needs
+  // `overflow: auto` on the stage so the user can scroll when
+  // zoomed in past 100% via the header zoom widget. The inner
+  // iframe + the inspector's pan/zoom continue to work normally
+  // inside the (now scaled) stage.
+  &[data-mode="workspace"] {
+    .preview-stage {
+      overflow: auto;
+    }
+  }
+
   // Design Tokens mode also hides both sidebars; the design-tokens-view*
   // brings its own left sub-sidebar + main pane inside the preview pane,
   // so we just need the preview pane to take the full width.
@@ -156,6 +167,32 @@
   flex: 1;
   inline-size: 100%;
   min-block-size: 0;
+  display: flex;
+}
+
+// Zoom wrapper. The viewer's header zoom widget mutates
+// `:viewer-local :zoom`; the JSX projects that value onto
+// `style.zoom` here. We use the CSS `zoom` property (not
+// `transform: scale`) because `zoom` rescales layout AND visual,
+// so the parent `.preview-stage`'s `overflow: auto` engages
+// correctly when zoomed past 100% — `transform: scale` only
+// rescales paint, leaving layout (and overflow) at native size,
+// which means scrolling to see clipped content doesn't work.
+//
+// Applies in both prototype and workspace modes. In workspace
+// mode the inner iframe is still `flex: 1` filling the container,
+// so the zoom container needs to also fill the stage; the data-
+// mode override below sets that.
+.zoom-container {
+  position: relative;
+  flex: 0 0 auto;
+  transform-origin: top left;
+}
+
+.html-mode-section[data-mode="workspace"] .zoom-container {
+  flex: 1;
+  inline-size: 100%;
+  block-size: 100%;
   display: flex;
 }
 
