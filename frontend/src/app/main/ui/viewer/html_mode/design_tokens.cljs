@@ -63,7 +63,7 @@
 ;; Categories
 
 (def ^:private category-order
-  [:color :typography :spacing :radius :dimension :stroke :rotation])
+  [:color :typography :spacing :radius :dimension :stroke :rotation :opacity :shadow])
 
 (def ^:private category-index
   (zipmap category-order (range)))
@@ -75,7 +75,9 @@
    :radius     "viewer.html-mode.design-tokens.category.radius"
    :dimension  "viewer.html-mode.design-tokens.category.dimension"
    :stroke     "viewer.html-mode.design-tokens.category.stroke"
-   :rotation   "viewer.html-mode.design-tokens.category.rotation"})
+   :rotation   "viewer.html-mode.design-tokens.category.rotation"
+   :opacity    "viewer.html-mode.design-tokens.category.opacity"
+   :shadow     "viewer.html-mode.design-tokens.category.shadow"})
 
 ;; ---------------------------------------------------------------------------
 ;; Extraction & aggregation
@@ -206,11 +208,23 @@
          [:div {:class (stl/css :token-preview-rotation)
                 :style {:transform (str "rotate(" deg "deg)")}}]])
 
+      :opacity
+      (let [o (safe-numeric numeric-value 0 1 1)]
+        [:div {:class (stl/css :token-preview)}
+         [:div {:class (stl/css :token-preview-opacity)
+                :style {:opacity o}}]])
+
+      :shadow
+      [:div {:class (stl/css :token-preview)}
+       [:div {:class (stl/css :token-preview-shadow)
+              :style {:box-shadow value}}]]
+
       :typography
       (let [attr  (first attributes)
             style (case attr
                     "fontSize"       {:font-size value}
                     "fontFamily"     {:font-family value}
+                    "fontWeight"     {:font-weight value}
                     "lineHeight"     {:line-height value}
                     "letterSpacing"  {:letter-spacing value}
                     "textCase"       {:text-transform value}

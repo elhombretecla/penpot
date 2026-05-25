@@ -416,6 +416,20 @@
   border: 1px solid var(--color-foreground-primary);
 }
 
+.token-preview-opacity {
+  inline-size: $sz-24;
+  block-size: $sz-24;
+  border-radius: 50%;
+  background-color: var(--color-foreground-primary);
+}
+
+.token-preview-shadow {
+  inline-size: $sz-24;
+  block-size: $sz-24;
+  border-radius: 4px;
+  background-color: var(--color-background-primary);
+}
+
 .token-preview-typo {
   @include t.use-typography("body-medium");
 

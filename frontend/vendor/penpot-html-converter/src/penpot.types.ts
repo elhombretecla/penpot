@@ -472,6 +472,11 @@ export interface DimensionsTokenAttrs {
   textCase?: TokenName;
   textDecoration?: TokenName;
   strokeWidth?: TokenName;
+  fontWeight?: TokenName;
+  opacity?: TokenName;
+  typography?: TokenName;
+  x?: TokenName;
+  y?: TokenName;
 }
 
 // ============================================================

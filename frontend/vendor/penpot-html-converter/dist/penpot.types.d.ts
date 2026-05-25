@@ -304,6 +304,11 @@ export interface DimensionsTokenAttrs {
     textCase?: TokenName;
     textDecoration?: TokenName;
     strokeWidth?: TokenName;
+    fontWeight?: TokenName;
+    opacity?: TokenName;
+    typography?: TokenName;
+    x?: TokenName;
+    y?: TokenName;
 }
 export type ShapeType = 'path' | 'group' | 'frame' | 'circle' | 'svg-raw' | 'image' | 'bool' | 'rect' | 'text';
 export type ConstraintsH = 'scale' | 'center' | 'right' | 'leftright' | 'left';

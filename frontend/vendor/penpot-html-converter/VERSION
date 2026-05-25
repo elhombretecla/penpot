@@ -8,3 +8,9 @@ modifications:
 - Dropped src/converter/shape-code.ts and src/converter/semantics-store.ts (unused by Penpot integration; they were the only other oxfmt consumers).
 - Dropped all *.test.ts and *.integration.test.ts files (upstream test suite stays in penpot-tools).
 - Wrote a self-contained tsconfig.json targeting ES2022 ESM with declarations.
+- Extended `extractAllTokens` (src/converter/tokens.ts) to resolve every applied
+  token attribute Penpot supports — opacity, shadow, composite typography,
+  fontWeight and x/y — which were previously dropped, and added `opacity`/`shadow`
+  to `TokenCategory`. Only `dist/converter/tokens.*` and `dist/penpot.types.d.ts`
+  were re-emitted (the rest of `dist` is left as-is to avoid reverting unrelated
+  src/dist drift in this snapshot).

@@ -25,7 +25,7 @@ export declare function tokenToCssVar(tokenName: string, tokens?: Map<string, st
  * Returns `''` when the map is empty.
  */
 export declare function tokensToCss(tokens: Map<string, string>): string;
-export type TokenCategory = 'color' | 'dimension' | 'spacing' | 'radius' | 'rotation' | 'typography' | 'stroke';
+export type TokenCategory = 'color' | 'dimension' | 'spacing' | 'radius' | 'rotation' | 'typography' | 'stroke' | 'opacity' | 'shadow';
 export interface TokenInfo {
     /** Raw token name (dots preserved — e.g. "colors.brand.500") */
     name: string;

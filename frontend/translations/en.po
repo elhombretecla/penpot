@@ -6026,6 +6026,14 @@ msgstr "Stroke"
 msgid "viewer.html-mode.design-tokens.category.rotation"
 msgstr "Rotation"
 
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.category.opacity"
+msgstr "Opacity"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.category.shadow"
+msgstr "Shadow"
+
 #: src/app/main/ui/dashboard/team.cljs:1203
 msgid "webhooks.last-delivery.success"
 msgstr "Last delivery was successful."

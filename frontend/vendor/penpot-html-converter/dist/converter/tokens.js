@@ -1,3 +1,4 @@
+import { shadowToStyle } from './visual/shadows';
 function getFirstTextLeafFill(shape) {
     if (!shape.content)
         return undefined;
@@ -166,10 +167,30 @@ function resolveTokenValue(attribute, shape) {
                 ? { category: 'rotation', value: `${n}deg`, numericValue: n }
                 : undefined;
         }
+        case 'opacity': {
+            const n = shape.opacity;
+            return typeof n === 'number'
+                ? { category: 'opacity', value: String(n), numericValue: n }
+                : undefined;
+        }
+        case 'x':
+        case 'y': {
+            const n = shape[attribute];
+            const v = pxOrUndefined(n);
+            return v ? { category: 'dimension', value: v, numericValue: n } : undefined;
+        }
+        case 'shadow': {
+            const shadows = shape.shadow;
+            if (!shadows || shadows.length === 0)
+                return undefined;
+            const v = shadows.map(shadowToStyle).filter(Boolean).join(', ');
+            return v ? { category: 'shadow', value: v } : undefined;
+        }
         case 'fontSize':
         case 'lineHeight':
         case 'letterSpacing':
         case 'fontFamily':
+        case 'fontWeight':
         case 'textCase':
         case 'textDecoration': {
             if (shape.type !== 'text')
@@ -190,6 +211,25 @@ function resolveTokenValue(attribute, shape) {
                 };
             }
             return { category: 'typography', value: str };
+        }
+        case 'typography': {
+            // Composite typography token (the usual way a whole type style is
+            // applied). It has no single CSS value, so we build a readable
+            // preview from the first text leaf — family + size — falling back
+            // to a generic label so the token still surfaces in the inventory.
+            if (shape.type !== 'text')
+                return { category: 'typography', value: 'Typography' };
+            const text = shape;
+            const family = findFirstLeaf(text, 'fontFamily');
+            const size = findFirstLeaf(text, 'fontSize');
+            const parts = [];
+            if (family !== undefined && family !== null && family !== '')
+                parts.push(String(family));
+            if (size !== undefined && size !== null && size !== '') {
+                const asNum = Number(String(size));
+                parts.push(Number.isFinite(asNum) ? `${asNum}px` : String(size));
+            }
+            return { category: 'typography', value: parts.join(' · ') || 'Typography' };
         }
         default:
             return undefined;
