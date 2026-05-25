@@ -493,10 +493,11 @@
 ;; An icon is vector art: a single path is the simplest case, but icons
 ;; are commonly built from several paths sitting inside a group or board.
 ;; In that case the useful asset is the SVG of the *whole set*, not each
-;; path on its own — so we treat the outermost pure-vector subtree that
-;; contains at least one path as a single icon, and only fall back to
-;; individual paths when they live among non-vector siblings (text,
-;; images, …) with no vector container wrapping them.
+;; path on its own — so a group whose paths are its direct content reads
+;; as one icon. But we always prefer the *innermost* such grouping: when
+;; a vector group merely wraps a deeper icon group, we drill down to the
+;; inner one instead of offering the outer hierarchy, and a container that
+;; bundles several icon groups yields one entry per icon.
 
 (def ^:private vector-leaf-types
   "Shape types that count as vector content an icon can be made of."
@@ -549,28 +550,27 @@
   "Walk the selected shape's subtree top-down, returning the shapes that
    represent downloadable SVG icons.
 
-   The unit of an icon is the *outermost* pure-vector subtree holding at
-   least one path, so a group or board of paths collapses into a single
+   An icon is the *innermost* group/board (or lone path) that holds
+   paths: a group whose direct children are paths collapses into a single
    icon (one SVG of the whole set) rather than one download per path —
-   which is the common \"icon made of several paths\" case.
-
-   The one exception is an explicitly authored *collection*: when a
-   pure-vector container bundles two or more child groups/boards that are
-   each an icon in their own right, we keep them separate instead of
-   merging the whole set into one SVG. Containers with mixed content
-   (text, images, …) are descended into so nested icons are still found,
-   and stray paths sitting among non-vector siblings are offered alone."
+   the common \"icon made of several paths\" case. But when a vector
+   group merely *wraps* one or more deeper icon groups, we skip the
+   wrapper and keep descending, so we return the tightest grouping of
+   paths instead of an outer hierarchy (and a board bundling several icon
+   groups yields one entry per icon). Stray paths sitting beside an inner
+   icon group — or among non-vector siblings — are offered on their own,
+   and containers with mixed content are descended into so nested icons
+   are still found."
   [shape objects]
-  (let [{:keys [vector? path?]} (analyze-vector shape objects)]
-    (if (and vector? path?)
-      (let [child-shapes  (keep #(get objects %) (get shape :shapes))
-            grouped-icons (filter #(icon-container? % objects) child-shapes)]
-        (if (>= (count grouped-icons) 2)
-          (into [] (mapcat #(collect-icon-shapes % objects)) child-shapes)
-          [shape]))
-      (into []
-            (mapcat #(collect-icon-shapes % objects))
-            (keep #(get objects %) (get shape :shapes))))))
+  (let [child-shapes (keep #(get objects %) (get shape :shapes))
+        {:keys [vector? path?]} (analyze-vector shape objects)]
+    (if (and vector? path?
+             (not-any? #(icon-container? % objects) child-shapes))
+      ;; Innermost vector+path grouping (or a lone path): this is the icon.
+      [shape]
+      ;; Either not vector art here, or it just wraps deeper icon groups —
+      ;; descend to find the tightest path groupings.
+      (into [] (mapcat #(collect-icon-shapes % objects)) child-shapes))))
 
 (mf/defc icon-asset-row*
   [{:keys [shape page file]}]
