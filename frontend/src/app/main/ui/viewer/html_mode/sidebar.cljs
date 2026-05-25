@@ -27,9 +27,11 @@
    [app.common.types.components-list :as ctcl]
    [app.common.uuid :as uuid]
    [app.config :as cf]
+   [app.main.data.exports.assets :as de]
    [app.main.data.html-mode.style-parse :as sp]
    [app.main.data.modal :as modal]
    [app.main.refs :as refs]
+   [app.main.render :as render]
    [app.main.store :as st]
    [app.main.ui.components.dropdown :refer [dropdown]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
@@ -424,11 +426,17 @@
 ;; ---------------------------------------------------------------------------
 ;; Assets panel
 ;;
-;; Walks the selected shape's subtree collecting every image fill, and
-;; renders each one with a thumbnail preview plus a download icon
-;; button. Downloads route through `cf/resolve-file-media` directly —
-;; image fills are static media on Penpot's CDN, so we don't need the
-;; export pipeline for them.
+;; Walks the selected shape's subtree collecting two kinds of asset:
+;;
+;;   • Image fills — static media on Penpot's CDN; downloaded straight
+;;     from `cf/resolve-file-media`, no export pipeline needed.
+;;
+;;   • Vector icons — path/bool/svg-raw art, downloaded as SVG through
+;;     the regular export pipeline (`de/request-export`), the same route
+;;     the Inspect panel uses, so we get a server-rendered SVG identical
+;;     to a normal export.
+;;
+;; Each is rendered with a preview thumbnail plus a download button.
 
 (defn- collect-image-fills
   "Walk a shape and its descendants, returning a vector of image fill maps.
@@ -480,18 +488,145 @@
                        :aria-label (tr "viewer.html-mode.sidebar.assets.download")
                        :on-click on-download}]]))
 
+;; --- Icon detection -------------------------------------------------------
+;;
+;; An icon is vector art: a single path is the simplest case, but icons
+;; are commonly built from several paths sitting inside a group or board.
+;; In that case the useful asset is the SVG of the *whole set*, not each
+;; path on its own — so we treat the outermost pure-vector subtree that
+;; contains at least one path as a single icon, and only fall back to
+;; individual paths when they live among non-vector siblings (text,
+;; images, …) with no vector container wrapping them.
+
+(def ^:private vector-leaf-types
+  "Shape types that count as vector content an icon can be made of."
+  #{:path :bool :svg-raw :rect :circle})
+
+(def ^:private path-like-types
+  "The strong \"this is an icon\" signal: a subtree must contain at least
+   one of these to be offered as an icon (a bare rect/circle alone is
+   just a box, not an icon)."
+  #{:path :bool :svg-raw})
+
+(defn- raster-fill?
+  "True when the shape paints itself with an image fill — that makes it a
+   raster asset (surfaced by the image list), not vector icon art."
+  [shape]
+  (boolean (some :fill-image (get shape :fills))))
+
+(defn- analyze-vector
+  "Classify a shape's subtree for icon detection, returning
+   `{:vector? bool :path? bool}`:
+
+   • `:vector?` — the entire subtree is pure vector art (no text, image
+     or raster-filled shape anywhere in it).
+   • `:path?` — the subtree holds at least one path/bool/svg-raw."
+  [shape objects]
+  (let [type      (get shape :type)
+        child-ids (get shape :shapes)]
+    (if (and (contains? #{:group :frame} type) (seq child-ids))
+      (let [results (->> child-ids
+                         (keep #(get objects %))
+                         (mapv #(analyze-vector % objects)))]
+        {:vector? (and (not (raster-fill? shape))
+                       (seq results)
+                       (every? :vector? results))
+         :path?   (boolean (some :path? results))})
+      (let [vector? (and (contains? vector-leaf-types type)
+                         (not (raster-fill? shape)))]
+        {:vector? vector?
+         :path?   (and vector? (contains? path-like-types type))}))))
+
+(defn- icon-container?
+  "True when `shape` is a group/board whose whole subtree is vector art
+   with at least one path — i.e. it reads as one self-contained icon."
+  [shape objects]
+  (and (contains? #{:group :frame} (get shape :type))
+       (let [{:keys [vector? path?]} (analyze-vector shape objects)]
+         (and vector? path?))))
+
+(defn- collect-icon-shapes
+  "Walk the selected shape's subtree top-down, returning the shapes that
+   represent downloadable SVG icons.
+
+   The unit of an icon is the *outermost* pure-vector subtree holding at
+   least one path, so a group or board of paths collapses into a single
+   icon (one SVG of the whole set) rather than one download per path —
+   which is the common \"icon made of several paths\" case.
+
+   The one exception is an explicitly authored *collection*: when a
+   pure-vector container bundles two or more child groups/boards that are
+   each an icon in their own right, we keep them separate instead of
+   merging the whole set into one SVG. Containers with mixed content
+   (text, images, …) are descended into so nested icons are still found,
+   and stray paths sitting among non-vector siblings are offered alone."
+  [shape objects]
+  (let [{:keys [vector? path?]} (analyze-vector shape objects)]
+    (if (and vector? path?)
+      (let [child-shapes  (keep #(get objects %) (get shape :shapes))
+            grouped-icons (filter #(icon-container? % objects) child-shapes)]
+        (if (>= (count grouped-icons) 2)
+          (into [] (mapcat #(collect-icon-shapes % objects)) child-shapes)
+          [shape]))
+      (into []
+            (mapcat #(collect-icon-shapes % objects))
+            (keep #(get objects %) (get shape :shapes))))))
+
+(mf/defc icon-asset-row*
+  [{:keys [shape page file]}]
+  (let [objects (get page :objects)
+        name    (or (:name shape) (str (:id shape)))
+        on-download
+        (mf/use-fn
+         (mf/deps shape page file)
+         (fn [_]
+           ;; Vector icons have no standalone media id, so we render them
+           ;; to SVG through the regular export pipeline — the same path
+           ;; the Inspect panel uses — which also handles the download.
+           (st/emit!
+            (de/request-export
+             {:exports [{:type :svg
+                         :suffix ""
+                         :scale 1
+                         :page-id (:id page)
+                         :file-id (:id file)
+                         :name name
+                         :object-id (:id shape)}]})
+            (de/export-shapes-event [{:type :svg}] "html-mode"))))]
+    [:div {:class (stl/css :asset-row)}
+     [:div {:class (stl/css :asset-thumb :asset-thumb-icon)}
+      [:& render/frame-svg {:frame shape
+                            :objects objects
+                            :use-thumbnails false
+                            :background-color "transparent"}]]
+     [:div {:class (stl/css :asset-meta)}
+      [:span {:class (stl/css :asset-name)} name]
+      [:span {:class (stl/css :asset-type)} "SVG"]]
+     [:> icon-button* {:variant "ghost"
+                       :icon i/download
+                       :aria-label (tr "viewer.html-mode.sidebar.assets.download")
+                       :on-click on-download}]]))
+
 (mf/defc assets-panel*
-  [{:keys [shape page]}]
+  [{:keys [shape page file]}]
   (let [images (mf/with-memo [shape page]
-                 (when shape (collect-image-fills shape page)))]
-    (when (seq images)
+                 (when shape (collect-image-fills shape page)))
+        icons  (mf/with-memo [shape page]
+                 (when shape (collect-icon-shapes shape (get page :objects))))
+        total  (+ (count images) (count icons))]
+    (when (pos? total)
       [:> section-disclosure*
        {:testid "html-mode-section-assets"
         :title (tr "viewer.html-mode.sidebar.assets.title")
-        :action (str (count images))}
+        :action (str total)}
        [:div {:class (stl/css :asset-list)}
         (for [[idx img] (d/enumerate images)]
-          [:> asset-row* {:key (str (:id img) "-" idx) :img img}])]])))
+          [:> asset-row* {:key (str "img-" (:id img) "-" idx) :img img}])
+        (for [[idx icon-shape] (d/enumerate icons)]
+          [:> icon-asset-row* {:key (str "icon-" (:id icon-shape) "-" idx)
+                               :shape icon-shape
+                               :page page
+                               :file file}])]])))
 
 ;; ---------------------------------------------------------------------------
 ;; Export action
@@ -629,4 +764,4 @@
 
          ;; TOKENS + ASSETS
          [:> tokens-panel* {:shape shape}]
-         [:> assets-panel* {:shape shape :page page}]]])]))
+         [:> assets-panel* {:shape shape :page page :file file}]]])]))

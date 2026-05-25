@@ -613,6 +613,23 @@
   border-radius: $br-4;
 }
 
+// Vector icons render a live SVG preview rather than a CDN background
+// image: center it and let it scale down to fit the thumbnail box while
+// preserving its aspect ratio.
+.asset-thumb-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-xs);
+
+  svg {
+    inline-size: 100%;
+    block-size: 100%;
+    max-inline-size: 100%;
+    max-block-size: 100%;
+  }
+}
+
 .asset-meta {
   display: flex;
   flex-direction: column;
