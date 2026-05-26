@@ -212,6 +212,29 @@
   box-shadow: 0 4px 24px rgb(0 0 0 / 0.12);
 }
 
+// Decorative device mockup (Device view → "Device mockup" toggle). A
+// purely visual bezel wrapped AROUND `.board-stack`, so the previewed
+// board keeps its exact pixel size. The inner `.board-stack` gets a
+// matching inner radius so the clipped board corners follow the bezel.
+.device-frame {
+  display: inline-flex;
+  padding: 12px;
+  border-radius: 32px;
+  background: #111314;
+  box-shadow: 0 12px 48px rgb(0 0 0 / 0.3);
+
+  .board-stack {
+    box-shadow: none;
+  }
+
+  // Round the clip (which already has overflow:hidden) rather than the
+  // stack, so the board corners follow the bezel while overlays — which
+  // are siblings of the clip — can still extend past the board edge.
+  .board-clip {
+    border-radius: 20px;
+  }
+}
+
 // Clipping layer for the animated iframes. `overflow:hidden` keeps
 // slide / push transforms inside the board's bounds so the animated
 // frame can't visually escape onto the stage background. Overlays

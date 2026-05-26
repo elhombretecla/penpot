@@ -203,6 +203,7 @@
 (def ^:icon-id masked "masked")
 (def ^:icon-id menu "menu")
 (def ^:icon-id merge-nodes "merge-nodes")
+(def ^:icon-id monitor-smartphone "monitor-smartphone")
 (def ^:icon-id move "move")
 (def ^:icon-id msg-error "msg-error")
 (def ^:icon-id msg-neutral "msg-neutral")

@@ -5898,6 +5898,46 @@ msgstr "Updated just now"
 msgid "viewer.html-mode.toolbar.design-tokens"
 msgstr "Design Tokens"
 
+#: src/app/main/ui/viewer/html_mode/device_view.cljs
+msgid "viewer.html-mode.device-view.toggle"
+msgstr "Device view"
+
+#: src/app/main/ui/viewer/html_mode/device_view.cljs
+msgid "viewer.html-mode.device-view.default-size"
+msgstr "Default size"
+
+#: src/app/main/ui/viewer/html_mode/device_view.cljs
+msgid "viewer.html-mode.device-view.custom-size"
+msgstr "Custom size"
+
+#: src/app/main/ui/viewer/html_mode/device_view.cljs
+msgid "viewer.html-mode.device-view.interaction"
+msgstr "Interaction type"
+
+#: src/app/main/ui/viewer/html_mode/device_view.cljs
+msgid "viewer.html-mode.device-view.interaction.mouse"
+msgstr "Mouse"
+
+#: src/app/main/ui/viewer/html_mode/device_view.cljs
+msgid "viewer.html-mode.device-view.interaction.touch"
+msgstr "Touch"
+
+#: src/app/main/ui/viewer/html_mode/device_view.cljs
+msgid "viewer.html-mode.device-view.mockup"
+msgstr "Device mockup"
+
+#: src/app/main/ui/viewer/html_mode/device_view.cljs
+msgid "viewer.html-mode.device-view.background"
+msgstr "Background color"
+
+#: src/app/main/ui/viewer/html_mode/device_view.cljs
+msgid "viewer.html-mode.device-view.width"
+msgstr "Width"
+
+#: src/app/main/ui/viewer/html_mode/device_view.cljs
+msgid "viewer.html-mode.device-view.height"
+msgstr "Height"
+
 #: src/app/main/ui/viewer/html_mode/design_tokens.cljs
 msgid "viewer.html-mode.design-tokens.aria"
 msgstr "Design tokens"

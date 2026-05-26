@@ -91,6 +91,7 @@
    [app.main.ui.ds.foundations.assets.icon :as i]
    [app.main.ui.ds.layout.tab-switcher :refer [tab-switcher*]]
    [app.main.ui.viewer.html-mode.design-tokens :refer [design-tokens-view*]]
+   [app.main.ui.viewer.html-mode.device-view :refer [device-view-controls*]]
    [app.main.ui.viewer.html-mode.export-modal]
    [app.main.ui.viewer.html-mode.layers-tree :refer [layers-tree*]]
    [app.main.ui.viewer.html-mode.sidebar :refer [html-mode-sidebar*]]
@@ -1050,6 +1051,21 @@
    "  annotate(); scheduleDelays();"
    "}"
 
+   ;; ---- touch tap ripple ----
+   ;; Always registered; only paints when the parent has flagged this
+   ;; document with `body.penpot-touch-mode` (Touch interaction type).
+   ;; The ripple lives in the iframe where the pointer events are, so no
+   ;; cross-frame wiring is needed — the parent just toggles the class.
+   "document.addEventListener('pointerdown',function(e){"
+   "  if(!document.body.classList.contains('penpot-touch-mode')) return;"
+   "  var r=document.createElement('div');"
+   "  r.className='penpot-tap-ripple';"
+   "  r.style.left=e.clientX+'px';"
+   "  r.style.top=e.clientY+'px';"
+   "  document.body.appendChild(r);"
+   "  r.addEventListener('animationend',function(){ if(r.parentNode) r.parentNode.removeChild(r); });"
+   "},{capture:true, passive:true});"
+
    "})();"))
 
 (defn- build-prototype-document
@@ -1101,6 +1117,31 @@
      "  html, body { margin: 0; padding: 0; inline-size: 100%; block-size: 100%; }\n"
      "  p, h1, h2, h3, h4, h5, h6, ul, ol, dl, li, dd, blockquote, figure, pre { margin: 0; padding: 0; }\n"
      "  body { background: " bg "; overflow: hidden; user-select: none; position: relative; }\n"
+     ;; Device-view sizing: the converter renders the board root with its
+     ;; FIXED design width/height. Forcing it to fill the body lets the
+     ;; parent resize the board purely by resizing the `.board-stack`
+     ;; (and thus this iframe) — responsive content reflows, no rebuild /
+     ;; reload of the srcDoc needed. At the board's design size this is a
+     ;; no-op (100% == the natural size).
+     "  [data-id=\"" root-id "\"] { inline-size: 100% !important; block-size: 100% !important; }\n"
+     ;; Touch-input simulation. The parent toggles `body.penpot-touch-mode`
+     ;; (mirroring the `penpot-show-interactions` mechanism) when the user
+     ;; picks the Touch interaction type. We swap the cursor for a finger-
+     ;; sized translucent ring and the bridge script spawns a tap ripple on
+     ;; pointerdown. `*` + `!important` so links / buttons don't restore the
+     ;; pointer cursor.
+     "  body.penpot-touch-mode, body.penpot-touch-mode * {\n"
+     "    cursor: url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%3E%3Ccircle%20cx='12'%20cy='12'%20r='10'%20fill='black'%20fill-opacity='0.2'%20stroke='black'%20stroke-opacity='0.45'%20stroke-width='1.5'/%3E%3C/svg%3E\") 12 12, auto !important;\n"
+     "  }\n"
+     "  @keyframes penpot-tap-ripple {\n"
+     "    0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0.5; }\n"
+     "    100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }\n"
+     "  }\n"
+     "  .penpot-tap-ripple {\n"
+     "    position: fixed; inline-size: 44px; block-size: 44px; margin: 0;\n"
+     "    border-radius: 50%; background: rgb(0 0 0 / 0.28); pointer-events: none;\n"
+     "    z-index: 2147483647; animation: penpot-tap-ripple 0.45s ease-out forwards;\n"
+     "  }\n"
      ;; On-demand highlight of every shape that carries a prototype
      ;; interaction. The parent toggles `body.penpot-show-interactions`
      ;; (for 2s) when the user clicks the pane background, and also sets
@@ -1448,6 +1489,17 @@
                                     :nav-stack        []
                                     :overlays         []
                                     :transition       nil})
+        ;; Device-view settings (PROTOTYPING tab only). Pure visualization
+        ;; layer: overrides the board-stack size, toggles a touch cursor /
+        ;; device mockup, and recolors the preview stage. Lives here (not in
+        ;; `state*`) so the chosen size survives board navigations; session
+        ;; only — it resets on reload. `:size-override` nil means "use the
+        ;; board's design size".
+        device-view* (mf/use-state {:size-override nil
+                                    :preset-name   nil
+                                    :interaction   :mouse
+                                    :mockup?       false
+                                    :bg-color      nil})
         ;; `html-mode` is `:workspace` (default), `:prototype`, or
         ;; `:design-tokens`. It comes from the URL `?mode=` query param
         ;; so the selection is shareable. The Workspace/Prototype/
@@ -1461,6 +1513,12 @@
              (st/emit! (rt/nav :viewer (assoc params :mode tab))))))
         last-refresh* (mf/use-ref (js/Date.now))
         iframe-ref    (mf/use-ref nil)
+        ;; The `.preview-stage` DOM node. The device-view touch-mode effect
+        ;; queries every iframe under it (prototype boards + overlays) to
+        ;; toggle the touch cursor class — same approach as
+        ;; `highlight-interactions!`, but driven by an effect rather than a
+        ;; click, so it needs an explicit ref.
+        stage-ref     (mf/use-ref nil)
         ;; Layer DOM nodes keyed by frame-id. The prototype JSX
         ;; renders one `.board-layer` div per visible layer (one in
         ;; steady state, two during a navigate transition) and uses
@@ -1504,6 +1562,9 @@
         state-html*   (mf/use-ref nil)
         {:keys [status html error updated-at]} (deref state*)
         {:keys [current-frame-id overlays transition]} (deref proto-state*)
+        device-view  (deref device-view*)
+        on-device-view-change
+        (mf/use-fn (fn [m] (swap! device-view* merge m)))
         _ (mf/set-ref-val! proto-live* (deref proto-state*))
         _ (mf/set-ref-val! state-html* html)
         selected (deref selected*)
@@ -2028,6 +2089,34 @@
         (.addEventListener js/window "keydown" handler true)
         (fn [] (.removeEventListener js/window "keydown" handler true))))
 
+    ;; Device-view touch cursor. Toggle `body.penpot-touch-mode` on every
+    ;; iframe under the stage so the CSS cursor + tap ripple (both baked
+    ;; into the prototype document) engage. Re-runs when the interaction
+    ;; type flips or when a new board / overlay doc is rendered; the per-
+    ;; iframe `load` listener re-applies the class once an iframe finishes
+    ;; loading its (async) srcDoc.
+    (mf/with-effect [(:interaction device-view) html overlays mode]
+      (when (= mode :prototype)
+        (let [touch?   (= (:interaction device-view) :touch)
+              stage    (mf/ref-val stage-ref)
+              iframes  (some-> ^js stage (.querySelectorAll "iframe"))
+              n        (if iframes (.-length iframes) 0)
+              apply!   (fn [^js iframe]
+                         (when-let [^js body (some-> iframe (.-contentDocument) (.-body))]
+                           (if touch?
+                             (.add (.-classList body) "penpot-touch-mode")
+                             (.remove (.-classList body) "penpot-touch-mode"))))
+              attached (volatile! [])]
+          (dotimes [i n]
+            (let [^js iframe (aget iframes i)
+                  on-load    (fn [] (apply! iframe))]
+              (apply! iframe)
+              (.addEventListener iframe "load" on-load)
+              (vswap! attached conj [iframe on-load])))
+          (fn []
+            (doseq [[^js iframe on-load] @attached]
+              (.removeEventListener iframe "load" on-load))))))
+
     [:section {:class (stl/css :html-mode-section)
                :data-viewer-section true
                :data-mode mode-str
@@ -2067,7 +2156,15 @@
                                  {:id "design-tokens"
                                   :label (tr "viewer.html-mode.toolbar.design-tokens")}]
                           :selected mode-str
-                          :on-change on-mode-change}]]
+                          :on-change on-mode-change}]
+       ;; Device-view controls live in the toolbar's right zone
+       ;; (`justify-self: end`). Prototype tab only — the workspace /
+       ;; design-token views have no resizable board.
+       (when (= mode :prototype)
+         [:> device-view-controls*
+          {:settings device-view
+           :default-dims (board-dims (or (find-frame-by-id-str page current-frame-id) frame))
+           :on-change on-device-view-change}])]
 
       (if (= mode :design-tokens)
         ;; Design Tokens mode renders its own panel layout (left sub-
@@ -2097,6 +2194,16 @@
 
           :ready
           [:div {:class (stl/css :preview-stage)
+                 :ref stage-ref
+                 ;; Device-view background override (prototype tab only):
+                 ;; recolors the stage that surrounds the board, NOT the
+                 ;; board itself. Kept as a literal style map (with a
+                 ;; conditional value) so rumext camelCases the key at
+                 ;; compile time; a dynamic map expression would leave the
+                 ;; kebab key untouched and React would ignore it. nil value
+                 ;; → no inline override, so the scss default grey shows.
+                 :style {:background-color (when (= mode :prototype)
+                                             (:bg-color device-view))}
                  :on-click highlight-interactions!}
            [:div {:class (stl/css :zoom-container)
                   :style {:zoom zoom}}
@@ -2126,7 +2233,16 @@
              (let [proto-frame    (or (find-frame-by-id-str page current-frame-id) frame)
                    from-frame     (when transition (find-frame-by-id-str page (:from-id transition)))
                    to-frame       (when transition (find-frame-by-id-str page (:to-id transition)))
-                   {pw :width ph :height} (board-dims proto-frame)
+                   ;; Device-view size override: when the user picks a preset
+                   ;; or types a custom size, the board-stack uses those dims
+                   ;; instead of the board's design size. The iframe content
+                   ;; reflows because the board root is forced to fill the
+                   ;; body (see `build-prototype-document`). During a navigate
+                   ;; transition we keep the natural board dims so neither the
+                   ;; from- nor the to-board gets clipped mid-slide; the stack
+                   ;; snaps back to the override once the transition commits.
+                   override       (:size-override device-view)
+                   {pw :width ph :height} (or override (board-dims proto-frame))
                    {fw :width fh :height} (board-dims (or from-frame proto-frame))
                    {tw :width th :height} (board-dims (or to-frame proto-frame))
                    stack-w        (if transition (max fw tw) pw)
@@ -2166,9 +2282,17 @@
                      (swap! proto-state* update :overlays
                             (fn [xs] (into [] (remove (fn [o] (= (:id o) id))) xs))))]
                (when (and (pos? stack-w) (pos? stack-h))
-                 [:div {:class (stl/css :board-stack)
-                        :style {:width  (str stack-w "px")
-                                :height (str stack-h "px")}}
+                 (let [board-stack
+                       ;; `mf/html` compiles this hiccup to a React element
+                       ;; up front. Without it, binding the vector in a let
+                       ;; and returning it as a dynamic child leaves it an
+                       ;; uncompiled CLJS vector, which React iterates as a
+                       ;; collection — rendering `:div` as a child and
+                       ;; throwing "objects are not valid as a React child".
+                       (mf/html
+                        [:div {:class (stl/css :board-stack)
+                               :style {:width  (str stack-w "px")
+                                       :height (str stack-h "px")}}
                   [:div {:class (stl/css :board-clip)}
                    (for [{:keys [id doc role]} layers]
                      [:div {:key id
@@ -2193,7 +2317,14 @@
                      (for [o overlays]
                        [:> overlay-frame* {:key       (:id o)
                                            :overlay   o
-                                           :on-closed on-overlay-closed}])])]))
+                                           :on-closed on-overlay-closed}])])])]
+                   ;; Optional decorative device frame (bezel) around the
+                   ;; board. Rendered as a wrapper so the previewed board
+                   ;; keeps its EXACT pixel size (a border on `.board-stack`
+                   ;; would shrink the content under border-box).
+                   (if (:mockup? device-view)
+                     [:div {:class (stl/css :device-frame)} board-stack]
+                     board-stack))))
 
              ;; Non-prototype modes (workspace): iframe fills the
              ;; whole preview-stage as before. Pan/zoom + inspector
