@@ -1775,6 +1775,21 @@
                          :error      (.-message err)
                          :updated-at nil})))]
         (reset! selected* nil)
+        ;; Forget the prototype skip-guard whenever we're NOT in
+        ;; prototype mode. The guard (`rendered-frame-id*`, checked
+        ;; below) lets a controller-driven navigate/transition keep its
+        ;; freshly-committed board doc instead of being clobbered by a
+        ;; `:status :loading` reset — but the ref outlives a mode
+        ;; switch while the doc it vouches for does NOT: Workspace and
+        ;; Design Tokens overwrite `state*` with a non-board document.
+        ;; If we kept the stamp, returning to Prototype on the SAME
+        ;; frame would make the guard wrongly skip, leaving the
+        ;; full-page Workspace doc rendered inside the board-sized
+        ;; `.board-stack` — the board appears mispositioned until a
+        ;; reload clears the ref. Clearing it here forces a fresh board
+        ;; render on re-entry, matching the reload behaviour.
+        (when (not= mode :prototype)
+          (mf/set-ref-val! rendered-frame-id* nil))
         (cond
           (nil? page)
           (reset! state* {:status :empty :html nil :error nil :updated-at nil})
