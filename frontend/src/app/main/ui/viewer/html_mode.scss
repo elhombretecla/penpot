@@ -208,7 +208,9 @@
 .board-stack {
   position: relative;
   flex: 0 0 auto;
-  background-color: var(--color-background-primary);
+  // No background: the board paints its own fill inside the (transparent)
+  // iframe, so rounded / transparent boards reveal the `.preview-stage`
+  // behind them instead of a white card.
   box-shadow: 0 4px 24px rgb(0 0 0 / 0.12);
 }
 
@@ -310,11 +312,13 @@
   flex: none;
 }
 
-// The overlay iframe must be transparent so the frame's own (often
-// rounded) background is all that shows. The default
+// The board / overlay iframe must be transparent so the frame's own
+// (often rounded) background is all that shows. The default
 // `.preview-iframe` white fallback would otherwise paint a square
 // behind the frame and leak past its border-radius at the corners.
-// Paired with the transparent body in `build-prototype-document`.
+// Paired with the transparent body in `build-prototype-document` and the
+// background-less `.board-stack`.
+.board-layer .preview-iframe,
 .overlay-frame .preview-iframe {
   background: transparent;
 }

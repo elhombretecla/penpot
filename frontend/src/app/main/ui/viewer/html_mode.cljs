@@ -1095,11 +1095,12 @@
    after-delay events. Navigate / overlay actions bubble up to the
    parent via `postMessage`."
   [{:keys [html fonts-css tokens-css interactions]} page frame & [{:keys [transparent-bg?]}]]
-  ;; Overlays render with a transparent body so the frame's own
-  ;; (possibly rounded) background is the only thing painted — otherwise
-  ;; the page background fills the square iframe and leaks past the
-  ;; frame's border-radius at the corners. Boards keep the page
-  ;; background since they fill the iframe edge-to-edge.
+  ;; Both boards and overlays render with a transparent body so the frame's
+  ;; own (possibly rounded / partially transparent) background is the only
+  ;; thing painted — otherwise the page background fills the square iframe
+  ;; and leaks past the frame's border-radius at the corners (showing white).
+  ;; With a transparent body the rounded corners reveal the parent
+  ;; `.preview-stage` (also seen through the transparent `.board-stack`).
   (let [bg       (if transparent-bg? "transparent" (page-background page))
         title    (or (:name page) "Penpot HTML preview")
         ix-json  (.stringify js/JSON (clj->js (or interactions {})))
@@ -1693,7 +1694,7 @@
                    (when-let [dest-frame (find-frame-by-id-str page dest-id)]
                      (-> (render-board-html file page dest-frame)
                          (.then (fn [parts]
-                                  (let [doc (build-prototype-document parts page dest-frame)
+                                  (let [doc (build-prototype-document parts page dest-frame {:transparent-bg? true})
                                         anim (:animation interaction)
                                         ps' (mf/ref-val proto-live*)
                                         from-id (:current-frame-id ps')
@@ -1778,7 +1779,7 @@
                      (when-let [prev-frame (find-frame-by-id-str page prev)]
                        (-> (render-board-html file page prev-frame)
                            (.then (fn [parts]
-                                    (let [doc (build-prototype-document parts page prev-frame)]
+                                    (let [doc (build-prototype-document parts page prev-frame {:transparent-bg? true})]
                                       (swap! proto-state*
                                              (fn [s]
                                                (-> s
@@ -1888,7 +1889,7 @@
                              (when-not @cancelled?
                                (reset! state*
                                        {:status     :ready
-                                        :html       (build-prototype-document parts page fr)
+                                        :html       (build-prototype-document parts page fr {:transparent-bg? true})
                                         :error      nil
                                         :updated-at (js/Date.now)})
                                (mf/set-ref-val! rendered-frame-id* fr-id))))
