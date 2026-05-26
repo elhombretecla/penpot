@@ -93,6 +93,7 @@
    [app.main.ui.viewer.html-mode.export-modal]
    [app.main.ui.viewer.html-mode.layers-tree :refer [layers-tree*]]
    [app.main.ui.viewer.html-mode.sidebar :refer [html-mode-sidebar*]]
+   [app.util.dom :as dom]
    [app.util.i18n :refer [tr]]
    [app.util.object :as obj]
    [beicon.v2.core :as rx]
@@ -1094,6 +1095,28 @@
      "  html, body { margin: 0; padding: 0; inline-size: 100%; block-size: 100%; }\n"
      "  p, h1, h2, h3, h4, h5, h6, ul, ol, dl, li, dd, blockquote, figure, pre { margin: 0; padding: 0; }\n"
      "  body { background: " bg "; overflow: hidden; user-select: none; position: relative; }\n"
+     ;; On-demand highlight of every shape that carries a prototype
+     ;; interaction. The parent toggles `body.penpot-show-interactions`
+     ;; (for 2s) when the user clicks the pane background, and also sets
+     ;; `--penpot-highlight-color` on the iframe body to the app's
+     ;; current `--color-accent-primary` (purple in light theme, green
+     ;; in dark theme) — the iframe is its own document so it can't
+     ;; inherit the app's CSS variables, hence the explicit injection.
+     ;; The fallback (#6911d4, the light-theme purple) covers the brief
+     ;; window before the variable is set. The pulse + outline mirror
+     ;; the design-token "used by" highlight so both read as one effect.
+     ;; `[data-prototype-interactive]` is set by the bridge script's
+     ;; `annotate()` on every shape with a user-triggered interaction.
+     "  @keyframes penpot-prototype-pulse {\n"
+     "    0%   { box-shadow: 0 0 0 0    color-mix(in srgb, var(--penpot-highlight-color, #6911d4) 85%, transparent); }\n"
+     "    70%  { box-shadow: 0 0 0 22px transparent; }\n"
+     "    100% { box-shadow: 0 0 0 0    transparent; }\n"
+     "  }\n"
+     "  body.penpot-show-interactions [data-prototype-interactive] {\n"
+     "    outline: 2px solid var(--penpot-highlight-color, #6911d4) !important;\n"
+     "    outline-offset: -1px;\n"
+     "    animation: penpot-prototype-pulse 1.4s ease-out infinite;\n"
+     "  }\n"
      "</style>\n"
      "</head>\n"
      "<body>\n"
@@ -1403,6 +1426,48 @@
          (fn []
            (mf/set-ref-val! last-refresh* (js/Date.now))
            (st/emit! (dhtml/refresh-viewer-bundle))))
+
+        ;; Click on the pane background (outside the board) while in
+        ;; prototype mode: flash the pulse highlight on every shape that
+        ;; carries an interaction, for 2s, so the user can tell at a
+        ;; glance which elements respond to input. A click that lands on
+        ;; the board never reaches this handler — the iframe swallows
+        ;; its own clicks — so any click we see here is on the
+        ;; background and we don't need to test the event target.
+        ;;
+        ;; The highlight is driven by toggling `penpot-show-interactions`
+        ;; on the board iframe's `<body>` (the iframe is same-origin via
+        ;; `allow-same-origin`, so the parent can reach its
+        ;; `contentDocument` directly — the same DOM-mutation pattern
+        ;; `design_tokens.cljs` uses). We toggle every iframe under the
+        ;; stage rather than looking one up by id, so it works during a
+        ;; navigate transition (two boards) and is robust to the
+        ;; current-frame bookkeeping. In non-prototype modes the iframe
+        ;; lacks the rule + annotations, so the class is a no-op there.
+        highlight-interactions!
+        (mf/use-fn
+         (fn [^js e]
+           (let [^js stage   (.-currentTarget e)
+                 ^js iframes (.querySelectorAll stage "iframe")
+                 n           (.-length iframes)
+                 ;; Resolve the app's current primary accent (purple in
+                 ;; light theme, green in dark). The theme class lives on
+                 ;; `<body>`, so read the computed value from there — the
+                 ;; variable isn't set on `<html>`. We inject it into each
+                 ;; iframe because the iframe can't inherit the app's CSS
+                 ;; variables across the document boundary.
+                 color       (.trim (dom/get-css-variable "--color-accent-primary" (.-body js/document)))]
+             (dotimes [i n]
+               (let [^js iframe (aget iframes i)]
+                 (when-let [^js body (some-> iframe (.-contentDocument) (.-body))]
+                   (when (seq color)
+                     (.setProperty (.-style body) "--penpot-highlight-color" color))
+                   (.add (.-classList body) "penpot-show-interactions")
+                   (js/setTimeout
+                    (fn []
+                      (when-let [^js b (some-> iframe (.-contentDocument) (.-body))]
+                        (.remove (.-classList b) "penpot-show-interactions")))
+                    2000)))))))
 
         handle-tree-select
         (mf/use-fn
@@ -1913,7 +1978,8 @@
             (or error (tr "errors.generic"))]]
 
           :ready
-          [:div {:class (stl/css :preview-stage)}
+          [:div {:class (stl/css :preview-stage)
+                 :on-click highlight-interactions!}
            [:div {:class (stl/css :zoom-container)
                   :style {:zoom zoom}}
            (if (= mode :prototype)
