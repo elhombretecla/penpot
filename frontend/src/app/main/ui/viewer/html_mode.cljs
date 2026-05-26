@@ -395,41 +395,77 @@
   (str
    "(function(){"
    ;; ---- colours / sizes ----
-   "var SEL='#8c33eb';"     ;; --color-accent-tertiary  (selected outline)
-   "var HOV='#ff6fe0';"     ;; --color-accent-quaternary (hover outline + distance pills)
-   "var BAR=16;"            ;; pill / label height in px
-   "var FONT='11px/16px \"Helvetica Neue\",Arial,sans-serif';"
+   ;; The palette mirrors the inspector's box-model + the app accent
+   ;; tokens so both speak the same language: selection = primary,
+   ;; hover = quaternary, padding = success (green), spacing/distance =
+   ;; warning (orange). Selection reads the live `--color-accent-primary`
+   ;; from the parent (theme-aware via `allow-same-origin`), the rest are
+   ;; the theme-stable token hexes.
+   "var SEL=(function(){try{var v=(getComputedStyle(parent.document.body).getPropertyValue('--color-accent-primary')||'').trim();return v||'#6911d4';}catch(e){return '#6911d4';}})();"
+   ;; Selection text colour: black on a light accent (e.g. dark-mode mint),
+   ;; white on a dark one (e.g. light-mode purple) — so the name pill /
+   ;; dimension badge stay legible whichever theme the primary comes from.
+   "var SELFG=(function(c){c=(c||'').trim();if(c.charAt(0)!=='#')return '#fff';var h=c.slice(1);if(h.length===3){h=h.charAt(0)+h.charAt(0)+h.charAt(1)+h.charAt(1)+h.charAt(2)+h.charAt(2);}var r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);var lum=(0.299*r+0.587*g+0.114*b)/255;return lum>0.6?'#000':'#fff';})(SEL);"
+   "var HOV='#ff6fe0';"     ;; --color-accent-quaternary (hover)
+   "var PAD='#2d9f8f';"     ;; --color-accent-success   (padding bands)
+   "var DIST='#fe9c07';"    ;; --color-accent-warning   (spacing / distance bands)
+   "var BAR=18;"            ;; name / dimension tag height in px
+   ;; Penpot's UI font. The iframe is its own document so it doesn't get
+   ;; the app's `@font-face`; we inline one (same-origin, served at
+   ;; `/fonts`) so every overlay label renders in Work Sans.
+   "var FONT='11px/1 worksans,\"Helvetica Neue\",Arial,sans-serif';"
 
    ;; ---- styles ----
    "var s=document.createElement('style');"
    "s.textContent='"
-   ".penpot-hm-overlay{position:absolute;pointer-events:none;box-sizing:border-box;z-index:2147483647;display:none}"
-   ".penpot-hm-hover{outline:1px solid '+HOV+';outline-offset:-1px}"
-   ".penpot-hm-selected{outline:1px solid '+SEL+';outline-offset:-1px}"
-   ".penpot-hm-dim{position:absolute;left:50%;transform:translateX(-50%);top:100%;margin-top:4px;background:#fff;color:#000;font:'+FONT+';padding:0 6px;height:'+BAR+'px;border-radius:2px;white-space:nowrap;pointer-events:none;box-shadow:0 1px 2px rgba(0,0,0,0.15)}"
-   ".penpot-hm-pill{position:absolute;background:'+HOV+';color:#fff;font:'+FONT+';padding:0 6px;height:'+BAR+'px;line-height:'+BAR+'px;border-radius:'+(BAR/2)+'px;white-space:nowrap;pointer-events:none;z-index:2147483647;display:none;transform:translate(-50%,-50%)}"
+   "@font-face{font-family:worksans;src:url(/fonts/WorkSans-VariableFont.ttf);font-weight:100 900}"
+   ".penpot-hm-overlay{position:absolute;pointer-events:none;box-sizing:border-box;z-index:2147483646;display:none}"
+   ".penpot-hm-hover{outline:1.5px solid '+HOV+';outline-offset:-1px}"
+   ".penpot-hm-selected{outline:1.5px solid '+SEL+';outline-offset:-1px}"
+   ;; name pill — a tag at the top-left of the box.
+   ".penpot-hm-name{position:absolute;left:-1.5px;top:0;transform:translateY(-100%);display:none;align-items:center;background:'+SEL+';color:'+SELFG+';font:'+FONT+';font-weight:600;height:'+BAR+'px;padding:0 6px;border-radius:3px 3px 3px 0;white-space:nowrap;max-inline-size:90vw;overflow:hidden;text-overflow:ellipsis;pointer-events:none}"
+   ".penpot-hm-name.hov{background:'+HOV+';color:#fff}"
+   ;; dimension badge — W / H below the box.
+   ".penpot-hm-dim{position:absolute;left:50%;bottom:-5px;transform:translate(-50%,100%);display:none;align-items:center;gap:8px;background:'+SEL+';color:'+SELFG+';font:'+FONT+';height:'+BAR+'px;padding:0 7px;border-radius:3px;white-space:nowrap;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,0.25)}"
+   ".penpot-hm-dim.hov{background:'+HOV+';color:#fff}"
+   ;; hatched spacing band + numeric badge (padding = green, distance = orange).
+   ".penpot-hm-band{position:absolute;pointer-events:none;z-index:2147483645;display:none}"
+   ".penpot-hm-pad{background-image:repeating-linear-gradient(-45deg,rgba(45,159,143,0.32) 0 5px,transparent 5px 10px);box-shadow:inset 0 0 0 1px rgba(45,159,143,0.5)}"
+   ".penpot-hm-dist{background-image:repeating-linear-gradient(-45deg,rgba(254,156,7,0.34) 0 5px,transparent 5px 10px);box-shadow:inset 0 0 0 1px rgba(254,156,7,0.6)}"
+   ".penpot-hm-badge{position:absolute;transform:translate(-50%,-50%);display:none;background:'+PAD+';color:#fff;font:'+FONT+';height:16px;line-height:16px;padding:0 5px;border-radius:3px;white-space:nowrap;pointer-events:none;z-index:2147483647;box-shadow:0 1px 2px rgba(0,0,0,0.28)}"
+   ".penpot-hm-badge.dist{background:'+DIST+'}"
    "';"
    "document.head.appendChild(s);"
 
-   ;; ---- overlay + label DOM ----
+   ;; ---- outline overlays, each with a name pill + dimension badge ----
    "function mk(cls){var d=document.createElement('div');d.className='penpot-hm-overlay '+cls;document.body.appendChild(d);return d;}"
+   "function child(parent,cls){var d=document.createElement('div');d.className=cls;parent.appendChild(d);return d;}"
    "var hoverEl=mk('penpot-hm-hover');"
-   "var hoverLabel=document.createElement('div');hoverLabel.className='penpot-hm-dim';hoverEl.appendChild(hoverLabel);"
+   "var hoverName=child(hoverEl,'penpot-hm-name hov');"
+   "var hoverDim=child(hoverEl,'penpot-hm-dim hov');"
    "var selEl=mk('penpot-hm-selected');"
-   "var selLabel=document.createElement('div');selLabel.className='penpot-hm-dim';selEl.appendChild(selLabel);"
+   "var selName=child(selEl,'penpot-hm-name');"
+   "var selDim=child(selEl,'penpot-hm-dim');"
 
-   ;; ---- distance pills (top / right / bottom / left) ----
-   "function pill(){var p=document.createElement('div');p.className='penpot-hm-pill';document.body.appendChild(p);return p;}"
-   "var pTop=pill(),pRight=pill(),pBottom=pill(),pLeft=pill();"
+   ;; ---- hatched spacing bands + numeric badges ----
+   ;; Index order [top,right,bottom,left]. `pad*` show the selected
+   ;; element's own padding (blue); `dist*` show the gap / insets between
+   ;; the selected element and the hovered one (pink).
+   "function band(cls){var d=document.createElement('div');d.className='penpot-hm-band '+cls;document.body.appendChild(d);return d;}"
+   "function badge(cls){var d=document.createElement('div');d.className='penpot-hm-badge '+cls;document.body.appendChild(d);return d;}"
+   "var padBands=[band('penpot-hm-pad'),band('penpot-hm-pad'),band('penpot-hm-pad'),band('penpot-hm-pad')];"
+   "var padBadges=[badge(''),badge(''),badge(''),badge('')];"
+   "var distBands=[band('penpot-hm-dist'),band('penpot-hm-dist'),band('penpot-hm-dist'),band('penpot-hm-dist')];"
+   "var distBadges=[badge('dist'),badge('dist'),badge('dist'),badge('dist')];"
 
    "var currentSel=null;"
    ;; The shape the user has drilled INTO via double-click. Subsequent
    ;; single clicks pick its direct child on the cursor's ancestor
-   ;; chain — same semantics as Figma's "Enter to go down a level".
+   ;; chain — the same "go down a level" semantics as the workspace canvas.
    ;; `null` means we're at the root (top-level shapes).
    "var drillParent=null;"
    ;; Tracks whether Control/Cmd is held; Ctrl+hover previews the
-   ;; deepest shape (Figma-style "select inside") instead of the
+   ;; deepest shape ("select inside") instead of the
    ;; outer-most one. Updated by global key listeners further down.
    "var ctrlHeld=false;"
 
@@ -465,8 +501,8 @@
    ;;     drillParent on that chain (one level deeper than drillParent).
    ;;   • drillParent is NOT on the cursor's chain → the user clicked
    ;;     outside the drilled subtree. Pop back to the root and select
-   ;;     the new top-level. Figma does the same: clicking elsewhere
-   ;;     breaks out of the previous frame.
+   ;;     the new top-level — clicking elsewhere breaks out of the
+   ;;     previous frame.
    ;;
    ;; The chain index is read by reference equality on the element,
    ;; not on the data-id, so re-rendered iframes don't accidentally
@@ -481,35 +517,66 @@
    "}"
 
    "function fmt(n){var r=Math.round(n*100)/100;return (Math.round(r)===r)?String(Math.round(r)):r.toFixed(2);}"
-   "function place(overlay,label,el){"
+   "function place(overlay,el){"
    "  var r=el.getBoundingClientRect();"
    "  overlay.style.left=(r.left+window.scrollX)+'px';"
    "  overlay.style.top=(r.top+window.scrollY)+'px';"
    "  overlay.style.width=r.width+'px';"
    "  overlay.style.height=r.height+'px';"
    "  overlay.style.display='block';"
-   "  if(label){label.textContent=fmt(r.width)+' x '+fmt(r.height);}"
    "}"
    "function hide(o){o.style.display='none';}"
-   "function showPill(p,cx,cy,text){"
-   "  p.textContent=text;"
-   "  p.style.left=(cx+window.scrollX)+'px';"
-   "  p.style.top=(cy+window.scrollY)+'px';"
-   "  p.style.display='block';"
+   ;; Name pill: the shape's name (falls back to its tag).
+   "function placeName(nameEl,el){"
+   "  nameEl.textContent=el.getAttribute('data-name')||el.tagName.toLowerCase();"
+   "  nameEl.style.display='inline-flex';"
    "}"
-   "function hidePills(){hide(pTop);hide(pRight);hide(pBottom);hide(pLeft);}"
+   ;; Dimension badge: `<width> x <height>` (rendered px).
+   "function placeDim(dimEl,el){"
+   "  var r=el.getBoundingClientRect();"
+   "  dimEl.textContent=fmt(r.width)+' × '+fmt(r.height);"
+   "  dimEl.style.display='inline-flex';"
+   "}"
+   ;; Position a hatched band + its centred numeric badge (page coords).
+   ;; Hidden when the measured value rounds to ~0.
+   "function setBand(bnd,bdg,x,y,w,h,val){"
+   "  if(val<=0.5){hide(bnd);hide(bdg);return;}"
+   "  bnd.style.left=(x+window.scrollX)+'px';bnd.style.top=(y+window.scrollY)+'px';"
+   "  bnd.style.width=Math.max(0,w)+'px';bnd.style.height=Math.max(0,h)+'px';bnd.style.display='block';"
+   "  bdg.textContent=fmt(val);"
+   "  bdg.style.left=(x+w/2+window.scrollX)+'px';bdg.style.top=(y+h/2+window.scrollY)+'px';bdg.style.display='block';"
+   "}"
+   "function hidePadding(){for(var i=0;i<4;i++){hide(padBands[i]);hide(padBadges[i]);}}"
+   "function hideDist(){for(var i=0;i<4;i++){hide(distBands[i]);hide(distBadges[i]);}}"
 
-   ;; ---- distance pills between hover and selected ----
-   "function placeDistances(hoverElNode){"
-   "  if(!currentSel || !hoverElNode || hoverElNode===currentSel){hidePills();return;}"
-   "  var H=hoverElNode.getBoundingClientRect();"
-   "  var S=currentSel.getBoundingClientRect();"
-   "  var top=H.top-S.top, right=S.right-H.right, bottom=S.bottom-H.bottom, left=H.left-S.left;"
-   "  var hcX=H.left+H.width/2, hcY=H.top+H.height/2;"
-   "  if(top>0.5){showPill(pTop,hcX,(H.top+S.top)/2,fmt(top)+'px');}else{hide(pTop);}"
-   "  if(bottom>0.5){showPill(pBottom,hcX,(H.bottom+S.bottom)/2,fmt(bottom)+'px');}else{hide(pBottom);}"
-   "  if(left>0.5){showPill(pLeft,(H.left+S.left)/2,hcY,fmt(left)+'px');}else{hide(pLeft);}"
-   "  if(right>0.5){showPill(pRight,(H.right+S.right)/2,hcY,fmt(right)+'px');}else{hide(pRight);}"
+   ;; ---- the selected element's own padding (blue hatched bands) ----
+   "function placePadding(){"
+   "  hidePadding();"
+   "  if(!currentSel)return;"
+   "  var cs=getComputedStyle(currentSel);"
+   "  var pt=parseFloat(cs.paddingTop)||0,pr=parseFloat(cs.paddingRight)||0,pb=parseFloat(cs.paddingBottom)||0,pl=parseFloat(cs.paddingLeft)||0;"
+   "  var r=currentSel.getBoundingClientRect();"
+   "  setBand(padBands[0],padBadges[0],r.left,r.top,r.width,pt,pt);"
+   "  setBand(padBands[2],padBadges[2],r.left,r.bottom-pb,r.width,pb,pb);"
+   "  setBand(padBands[3],padBadges[3],r.left,r.top+pt,pl,r.height-pt-pb,pl);"
+   "  setBand(padBands[1],padBadges[1],r.right-pr,r.top+pt,pr,r.height-pt-pb,pr);"
+   "}"
+
+   ;; ---- distance between the selected element and the hovered one ----
+   ;; Disjoint boxes → the gap on the separating axis (sibling spacing).
+   ;; Hovered inside selected → all four insets (frame-padding redlines).
+   "function placeDistances(){"
+   "  hideDist();"
+   "  if(!currentSel||!currentHover||currentHover===currentSel)return;"
+   "  var H=currentHover.getBoundingClientRect(),S=currentSel.getBoundingClientRect();"
+   "  if(H.top>=S.bottom-0.5){var x=Math.max(H.left,S.left),w=Math.min(H.right,S.right)-x;setBand(distBands[2],distBadges[2],x,S.bottom,(w>1?w:H.width),H.top-S.bottom,H.top-S.bottom);return;}"
+   "  if(S.top>=H.bottom-0.5){var x2=Math.max(H.left,S.left),w2=Math.min(H.right,S.right)-x2;setBand(distBands[0],distBadges[0],x2,H.bottom,(w2>1?w2:H.width),S.top-H.bottom,S.top-H.bottom);return;}"
+   "  if(H.left>=S.right-0.5){var y=Math.max(H.top,S.top),h=Math.min(H.bottom,S.bottom)-y;setBand(distBands[1],distBadges[1],S.right,y,H.left-S.right,(h>1?h:H.height),H.left-S.right);return;}"
+   "  if(S.left>=H.right-0.5){var y2=Math.max(H.top,S.top),h2=Math.min(H.bottom,S.bottom)-y2;setBand(distBands[3],distBadges[3],H.right,y2,S.left-H.right,(h2>1?h2:H.height),S.left-H.right);return;}"
+   "  setBand(distBands[0],distBadges[0],H.left,S.top,H.width,H.top-S.top,H.top-S.top);"
+   "  setBand(distBands[2],distBadges[2],H.left,H.bottom,H.width,S.bottom-H.bottom,S.bottom-H.bottom);"
+   "  setBand(distBands[3],distBadges[3],S.left,H.top,H.left-S.left,H.height,H.left-S.left);"
+   "  setBand(distBands[1],distBadges[1],H.right,H.top,S.right-H.right,H.height,S.right-H.right);"
    "}"
 
    ;; ---- hover ----
@@ -533,15 +600,20 @@
    "  lastMoveTarget=target;"
    "  var el=target?hoverAt(target):null;"
    "  currentHover=el;"
-   "  if(!el || el===currentSel){hide(hoverEl);hidePills();return;}"
-   "  place(hoverEl,hoverLabel,el);"
-   "  placeDistances(el);"
+   "  if(!el || el===currentSel){hide(hoverEl);hide(hoverName);hide(hoverDim);hideDist();placePadding();return;}"
+   "  place(hoverEl,el);"
+   "  placeName(hoverName,el);"
+   ;; With a selection active, hovering another element shows the spacing
+   ;; between the two (and hides the selected element's padding to keep
+   ;; the redlines readable). Without a selection, just show the size.
+   "  if(currentSel){hide(hoverDim);hidePadding();placeDistances();}"
+   "  else{hideDist();placeDim(hoverDim,el);}"
    "}"
    "document.addEventListener('mousemove',function(e){refreshHover(e.target);},{capture:true});"
-   "document.addEventListener('mouseleave',function(){hide(hoverEl);hidePills();currentHover=null;lastMoveTarget=null;});"
+   "document.addEventListener('mouseleave',function(){hide(hoverEl);hide(hoverName);hide(hoverDim);hideDist();placePadding();currentHover=null;lastMoveTarget=null;});"
 
    ;; ---- click ----
-   ;; Selection rules (Figma-style):
+   ;; Selection rules:
    ;;   • Plain single click → child of `drillParent` at cursor (or
    ;;     top-of-tree when no drill context).
    ;;   • Double click       → drill INTO whatever the first click of
@@ -571,12 +643,11 @@
    "    if(pick1.reset) drillParent=null;"
    "    el=pick1.shape;"
    "  }"
-   "  if(!el){currentSel=null;drillParent=null;hide(selEl);hide(hoverEl);hidePills();send({type:'penpot:html-mode:deselect'});return;}"
+   "  if(!el){currentSel=null;drillParent=null;hide(selEl);hide(selName);hide(selDim);hidePadding();hide(hoverEl);hide(hoverName);hide(hoverDim);hideDist();send({type:'penpot:html-mode:deselect'});return;}"
    "  e.preventDefault();e.stopPropagation();"
    "  currentSel=el;"
-   "  hide(hoverEl);"
-   "  hidePills();"
-   "  place(selEl,selLabel,el);"
+   "  hide(hoverEl);hide(hoverName);hide(hoverDim);hideDist();"
+   "  place(selEl,el);placeName(selName,el);placeDim(selDim,el);placePadding();"
    "  send({"
    "    type:'penpot:html-mode:select',"
    "    id:el.getAttribute('data-id'),"
@@ -589,8 +660,9 @@
 
    ;; ---- keep overlays aligned on scroll/resize ----
    "function reposition(){"
-   "  if(currentSel){place(selEl,selLabel,currentSel);}"
-   "  if(currentHover && currentHover!==currentSel){place(hoverEl,hoverLabel,currentHover);placeDistances(currentHover);}"
+   "  if(currentSel){place(selEl,currentSel);placeName(selName,currentSel);placeDim(selDim,currentSel);}"
+   "  if(currentHover && currentHover!==currentSel){place(hoverEl,currentHover);placeName(hoverName,currentHover);}"
+   "  if(currentHover && currentHover!==currentSel && currentSel){placeDistances();}else{placePadding();}"
    "}"
    "window.addEventListener('scroll',reposition,true);"
    "window.addEventListener('resize',reposition);"
@@ -623,13 +695,12 @@
    ;; parent so subsequent in-iframe single clicks behave predictably
    ;; (start from the root again).
    "    drillParent=null;"
-   "    hide(hoverEl);"
-   "    hidePills();"
-   "    place(selEl,selLabel,el);"
+   "    hide(hoverEl);hide(hoverName);hide(hoverDim);hideDist();"
+   "    place(selEl,el);placeName(selName,el);placeDim(selDim,el);placePadding();"
    "    centerOnElements(els, !!d.fit, d.padding);"
-   ;; Re-place after the transform changed so the outline lands
+   ;; Re-place after the transform changed so the outline + spacing land
    ;; on the now-shifted element.
-   "    place(selEl,selLabel,el);"
+   "    place(selEl,el);placeName(selName,el);placeDim(selDim,el);placePadding();"
    "    send({"
    "      type:'penpot:html-mode:select',"
    "      id:el.getAttribute('data-id'),"
@@ -656,7 +727,7 @@
    ;; ---- pan & zoom -------------------------------------------------
    ;; Mirrors Penpot's workspace canvas controls:
    ;;   • middle-mouse drag          → pan
-   ;;   • space + left-mouse drag    → pan (Figma/Penpot convention)
+   ;;   • space + left-mouse drag    → pan (Penpot convention)
    ;;   • ctrl/cmd + '+' or '='      → zoom in
    ;;   • ctrl/cmd + '-'             → zoom out
    ;;   • ctrl/cmd + '0'             → reset (1× zoom, centred)

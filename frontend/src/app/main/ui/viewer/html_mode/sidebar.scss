@@ -274,25 +274,28 @@
   padding: var(--sp-xs);
 }
 
+// Consistent, theme-aware palette shared with the inspection overlays:
+// margin/spacing → warning (orange), border → info (blue),
+// padding → success (green), content/selection → primary.
 .box-margin {
-  background: color-mix(in srgb, #f4b67a 22%, transparent);
-  border: 1px solid color-mix(in srgb, #f4b67a 38%, transparent);
+  background: color-mix(in srgb, var(--color-accent-warning) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent-warning) 55%, transparent);
 }
 
 .box-border {
   grid-column: 2;
   grid-row: 2;
   inline-size: 100%;
-  background: color-mix(in srgb, #f6db77 28%, transparent);
-  border: 1px solid color-mix(in srgb, #f6db77 45%, transparent);
+  background: color-mix(in srgb, var(--color-accent-info) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent-info) 55%, transparent);
 }
 
 .box-padding {
   grid-column: 2;
   grid-row: 2;
   inline-size: 100%;
-  background: color-mix(in srgb, #9bd8a0 28%, transparent);
-  border: 1px solid color-mix(in srgb, #9bd8a0 45%, transparent);
+  background: color-mix(in srgb, var(--color-accent-success) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent-success) 55%, transparent);
 }
 
 .box-content {
@@ -303,8 +306,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, #93b5f4 32%, transparent);
-  border: 1px solid color-mix(in srgb, #93b5f4 48%, transparent);
+  background: color-mix(in srgb, var(--color-accent-primary) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent-primary) 55%, transparent);
   border-radius: $br-4;
   color: var(--color-foreground-primary);
 
@@ -317,7 +320,7 @@
   position: absolute;
   inset-block-start: var(--sp-xxs);
   inset-inline-start: var(--sp-xs);
-  color: var(--color-foreground-secondary);
+  color: var(--color-foreground-primary);
 
   @include use-typography("body-small");
 }
