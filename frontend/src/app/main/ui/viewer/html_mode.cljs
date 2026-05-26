@@ -75,6 +75,7 @@
   (:require
    ["@penpot/html-converter" :as cv]
    [app.common.geom.point :as gpt]
+   [app.common.geom.shapes.bounds :as gsb]
    [app.common.types.shape.interactions :as ctsi]
    [app.common.uuid :as uuid]
    [app.main.data.html-mode :as dhtml]
@@ -1077,8 +1078,13 @@
    `window.__PENPOT_INTERACTIONS__`) and dispatches click / hover /
    after-delay events. Navigate / overlay actions bubble up to the
    parent via `postMessage`."
-  [{:keys [html fonts-css tokens-css interactions]} page frame]
-  (let [bg       (page-background page)
+  [{:keys [html fonts-css tokens-css interactions]} page frame & [{:keys [transparent-bg?]}]]
+  ;; Overlays render with a transparent body so the frame's own
+  ;; (possibly rounded) background is the only thing painted — otherwise
+  ;; the page background fills the square iframe and leaks past the
+  ;; frame's border-radius at the corners. Boards keep the page
+  ;; background since they fill the iframe edge-to-edge.
+  (let [bg       (if transparent-bg? "transparent" (page-background page))
         title    (or (:name page) "Penpot HTML preview")
         ix-json  (.stringify js/JSON (clj->js (or interactions {})))
         root-id  (str (:id frame))]
@@ -1273,7 +1279,16 @@
    (the currently displayed board). Returns `{:x :y :width :height}`
    in canvas units. Mirrors the viewer's overlay positioning math at
    `frontend/src/app/main/ui/viewer.cljs:141-212` by delegating to
-   `ctsi/calc-overlay-position`."
+   `ctsi/calc-overlay-position`.
+
+   `calc-overlay-position` positions the overlay's *bounds box* — which
+   includes the padding added by shadows / blur / overflowing children
+   (`gsb/get-object-bounds`), NOT the frame's `selrect`. Since we render
+   the iframe at the frame's `selrect` size, we shift the result by the
+   selrect's offset within the bounds box so the visible frame lands
+   exactly where the SVG viewer puts it (the viewer achieves the same
+   alignment via its `calculate-delta`). Without this, an overlay with a
+   shadow is mis-centred by half the shadow padding."
   [page interaction source-shape base-frame dest-frame]
   (let [objects          (:objects page)
         relative-to-id   (:position-relative-to interaction)
@@ -1289,9 +1304,12 @@
                           base-frame
                           dest-frame
                           (gpt/point 0 0))
-        srect            (:selrect dest-frame)]
-    {:x      (:x pos)
-     :y      (:y pos)
+        srect            (:selrect dest-frame)
+        bounds           (gsb/get-object-bounds objects dest-frame)
+        off-x            (- (:x srect) (:x bounds))
+        off-y            (- (:y srect) (:y bounds))]
+    {:x      (+ (:x pos) off-x)
+     :y      (+ (:y pos) off-y)
      :width  (:width srect)
      :height (:height srect)}))
 
@@ -1335,6 +1353,70 @@
                          :left  :right
                          :up    :down
                          :down  :up))])
+
+(defn- run-overlay-anim!
+  "Play an overlay enter / exit animation on `el` with the Web Animations
+   API and return the `Animation` (so callers can await `.finished`), or
+   nil when there's nothing to animate. Penpot allows only `:dissolve`
+   and `:slide` for overlays (`:push` is navigate-only). `exit?` reverses
+   it: dissolve fades out; slide leaves toward the inverted direction —
+   matching the SVG viewer's `invert-direction` on close."
+  [^js el animation exit?]
+  (when (and el animation)
+    (let [kind   (:animation-type animation)
+          dur    (max 1 (or (:duration animation) 300))
+          easing (easing->css (:easing animation))
+          opts   #js {:duration dur :easing easing :fill "both"}
+          frames (case kind
+                   :dissolve (if exit? [{:opacity 1} {:opacity 0}] [{:opacity 0} {:opacity 1}])
+                   :slide    (let [dir (if exit?
+                                         (:direction (ctsi/invert-direction animation))
+                                         (:direction animation))
+                                   off (slide-axis-percent dir)]
+                               (if exit?
+                                 [{:transform "translate(0,0)"} {:transform off}]
+                                 [{:transform off} {:transform "translate(0,0)"}]))
+                   nil)]
+      (when frames
+        (.animate el (clj->js frames) opts)))))
+
+(mf/defc overlay-frame*
+  "One mounted prototype overlay: a positioned iframe rendering the
+   overlay board. Plays the entrance animation once on mount, and when
+   the parent flags `:closing?` plays the exit animation and only then
+   calls `on-closed` — deferring the actual removal from state so the
+   iframe doesn't vanish mid-transition. Overlays without an animation
+   appear / disappear instantly."
+  {::mf/private true}
+  [{:keys [overlay on-closed]}]
+  (let [{:keys [id rect doc animation closing?]} overlay
+        el-ref (mf/use-ref nil)]
+    ;; Entrance, once on mount. The trailing `nil` matters: an effect
+    ;; body must return a cleanup fn or nothing — `run-overlay-anim!`
+    ;; returns an `Animation`, which React would otherwise reject.
+    (mf/with-effect []
+      (run-overlay-anim! (mf/ref-val el-ref) animation false)
+      nil)
+    ;; Exit when the parent flags `:closing?`, then remove from state.
+    (mf/with-effect [closing?]
+      (when closing?
+        (if-let [^js a (run-overlay-anim! (mf/ref-val el-ref) animation true)]
+          (-> (.-finished a)
+              (.then (fn [_] (on-closed id)))
+              (.catch (fn [_] (on-closed id))))
+          (on-closed id)))
+      nil)
+    [:div {:class (stl/css :overlay-frame)
+           :ref el-ref
+           :style {:left   (str (:x rect) "px")
+                   :top    (str (:y rect) "px")
+                   :width  (str (:width rect) "px")
+                   :height (str (:height rect) "px")}}
+     [:iframe {:class           (stl/css :preview-iframe)
+               :title           (tr "viewer.html-mode.iframe-title")
+               :src-doc         doc
+               :sandbox         "allow-scripts allow-same-origin"
+               :referrer-policy "no-referrer"}]]))
 
 ;; ---------------------------------------------------------------------------
 ;; Auto-refresh throttling
@@ -1406,8 +1488,24 @@
         ;; momentarily unmount the iframe right after the controller
         ;; just mounted it, causing a visible re-mount flicker.
         rendered-frame-id* (mf/use-ref nil)
+        ;; Live mirrors of the controller state. The window `message`
+        ;; listener is registered once (`[]` deps) and the dispatch it
+        ;; calls is memoised by `[file page]`, so its closure reads
+        ;; `state*` / `proto-state*` as the per-render SNAPSHOT captured
+        ;; when it was created (rumext `use-state` derefs are
+        ;; render-time values, not a live cell) — i.e. the initial
+        ;; `nil` board id / html, even after navigations update them.
+        ;; That's why animated navigate fell back to instant (stale
+        ;; `from-doc` nil) and overlays never opened (stale `base-frame`
+        ;; nil). Mirroring the current values into refs — which ARE
+        ;; stable live cells — lets the dispatch read them correctly at
+        ;; trigger time.
+        proto-live*   (mf/use-ref nil)
+        state-html*   (mf/use-ref nil)
         {:keys [status html error updated-at]} (deref state*)
         {:keys [current-frame-id overlays transition]} (deref proto-state*)
+        _ (mf/set-ref-val! proto-live* (deref proto-state*))
+        _ (mf/set-ref-val! state-html* html)
         selected (deref selected*)
         ;; Subscribe to the shared viewer zoom (the same value the
         ;; SVG viewer renders at). The header's zoom widget dispatches
@@ -1523,7 +1621,7 @@
          (fn [^js msg]
            (when-let [{:keys [source-id interaction]} (read-prototype-trigger msg)]
              (let [action       (:action-type interaction)
-                   ps           (deref proto-state*)
+                   ps           (mf/ref-val proto-live*)
                    base-id      (:current-frame-id ps)
                    base-frame   (when base-id (find-frame-by-id-str page base-id))
                    source-uuid  (parse-uuid-safe source-id)
@@ -1536,9 +1634,9 @@
                          (.then (fn [parts]
                                   (let [doc (build-prototype-document parts page dest-frame)
                                         anim (:animation interaction)
-                                        ps' (deref proto-state*)
+                                        ps' (mf/ref-val proto-live*)
                                         from-id (:current-frame-id ps')
-                                        from-doc (:html (deref state*))]
+                                        from-doc (mf/ref-val state-html*)]
                                     (if (and anim from-doc)
                                       (swap! proto-state* assoc
                                              :transition {:from-id from-id
@@ -1574,14 +1672,16 @@
                  (when-let [dest-id (some-> (:destination interaction) str)]
                    (let [already (some (fn [o] (when (= (:id o) dest-id) o)) (:overlays ps))]
                      (if (and already (= action :toggle-overlay))
+                       ;; Toggle off: flag it `:closing?` so `overlay-frame*`
+                       ;; plays the exit animation before it's removed.
                        (swap! proto-state* update :overlays
-                              (fn [xs] (into [] (remove (fn [o] (= (:id o) dest-id))) xs)))
+                              (fn [xs] (mapv (fn [o] (if (= (:id o) dest-id) (assoc o :closing? true) o)) xs)))
                        (let [dest-frame (or (find-frame-by-id-str page dest-id)
                                             (get-in page [:objects (parse-uuid-safe dest-id)]))]
                          (when (and dest-frame base-frame source-shape)
                            (-> (render-board-html file page dest-frame)
                                (.then (fn [parts]
-                                        (let [doc (build-prototype-document parts page dest-frame)
+                                        (let [doc (build-prototype-document parts page dest-frame {:transparent-bg? true})
                                               rect (compute-overlay-rect page interaction
                                                                          source-shape base-frame
                                                                          dest-frame)]
@@ -1589,6 +1689,7 @@
                                                  {:id        dest-id
                                                   :source-id source-id
                                                   :rect      rect
+                                                  :animation (:animation interaction)
                                                   :options   {:close-click-outside (boolean (:close-click-outside interaction))
                                                               :background-overlay  (boolean (:background-overlay interaction))}
                                                   :doc       doc}))))
@@ -1604,8 +1705,10 @@
                                      (when source-shape
                                        (str (or (:frame-id source-shape) (:id source-shape)))))]
                    (when target-id
+                     ;; Flag `:closing?` so `overlay-frame*` plays the exit
+                     ;; animation; it removes itself from state on finish.
                      (swap! proto-state* update :overlays
-                            (fn [xs] (into [] (remove (fn [o] (= (:id o) target-id))) xs)))))
+                            (fn [xs] (mapv (fn [o] (if (= (:id o) target-id) (assoc o :closing? true) o)) xs)))))
 
                  :prev-screen
                  (let [stack (:nav-stack ps)
@@ -2031,15 +2134,22 @@
                                          overlays)
                    close-all-bg-or-click
                    (fn []
-                     ;; Click on backdrop: close every overlay that
-                     ;; opted into close-click-outside. Mirrors the
-                     ;; viewer's `on-click` handler in
-                     ;; `viewer.cljs:157-164`.
+                     ;; Click on backdrop: flag every close-click-outside
+                     ;; overlay as `:closing?` so it plays its exit
+                     ;; animation; `overlay-frame*` removes each from state
+                     ;; when the animation settles. Mirrors the viewer's
+                     ;; `on-click` handler in `viewer.cljs:157-164`.
                      (swap! proto-state* update :overlays
                             (fn [xs]
-                              (into [] (remove (fn [o]
-                                                 (get-in o [:options :close-click-outside])))
-                                    xs))))]
+                              (mapv (fn [o]
+                                      (if (get-in o [:options :close-click-outside])
+                                        (assoc o :closing? true)
+                                        o))
+                                    xs))))
+                   on-overlay-closed
+                   (fn [id]
+                     (swap! proto-state* update :overlays
+                            (fn [xs] (into [] (remove (fn [o] (= (:id o) id))) xs))))]
                (when (and (pos? stack-w) (pos? stack-h))
                  [:div {:class (stl/css :board-stack)
                         :style {:width  (str stack-w "px")
@@ -2065,18 +2175,10 @@
                      (when needs-backdrop?
                        [:div {:class (stl/css :overlay-backdrop)
                               :on-click close-all-bg-or-click}])
-                     (for [{:keys [id rect doc]} overlays]
-                       [:div {:key id
-                              :class (stl/css :overlay-frame)
-                              :style {:left   (str (:x rect) "px")
-                                      :top    (str (:y rect) "px")
-                                      :width  (str (:width rect) "px")
-                                      :height (str (:height rect) "px")}}
-                        [:iframe {:class           (stl/css :preview-iframe)
-                                  :title           (tr "viewer.html-mode.iframe-title")
-                                  :src-doc         doc
-                                  :sandbox         "allow-scripts allow-same-origin"
-                                  :referrer-policy "no-referrer"}]])])]))
+                     (for [o overlays]
+                       [:> overlay-frame* {:key       (:id o)
+                                           :overlay   o
+                                           :on-closed on-overlay-closed}])])]))
 
              ;; Non-prototype modes (workspace): iframe fills the
              ;; whole preview-stage as before. Pan/zoom + inspector

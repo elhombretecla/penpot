@@ -287,3 +287,12 @@
   flex: none;
 }
 
+// The overlay iframe must be transparent so the frame's own (often
+// rounded) background is all that shows. The default
+// `.preview-iframe` white fallback would otherwise paint a square
+// behind the frame and leak past its border-radius at the corners.
+// Paired with the transparent body in `build-prototype-document`.
+.overlay-frame .preview-iframe {
+  background: transparent;
+}
+
