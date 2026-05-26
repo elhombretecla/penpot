@@ -49,7 +49,9 @@
 
 .row-label {
   @include t.use-typography("body-medium");
+  font-size: 12px;
   color: var(--color-foreground-primary);
+  width: 100%;
 }
 
 // --- Size preset select (same look as the workspace frame presets) --------
@@ -74,18 +76,14 @@
   @include t.use-typography("body-medium");
   flex-grow: 1;
   color: var(--color-foreground-primary);
+  font-size: 12px;
 }
 
 .collapsed-icon {
   display: flex;
   align-items: center;
-
-  svg {
-    inline-size: $sz-16;
-    block-size: $sz-16;
-    stroke: var(--color-foreground-secondary);
-    transform: rotate(90deg);
-  }
+  // DS icon* paints via `stroke: currentColor`, so set `color` here.
+  color: var(--color-foreground-secondary);
 }
 
 .custom-select-dropdown {
@@ -93,7 +91,7 @@
   inset-block-start: calc(100% + var(--sp-xs));
   inset-inline-start: 0;
   z-index: 11;
-  inline-size: 100%;
+  inline-size: 260px;
   max-block-size: 50vh;
   display: flex;
   flex-direction: column;
@@ -131,27 +129,27 @@
       gap: var(--sp-s);
       flex-grow: 1;
       justify-content: space-between;
+      min-inline-size: 0;
     }
 
     .preset-name {
       @include t.use-typography("body-medium");
+      font-size: 12px;
       color: var(--color-foreground-primary);
+      white-space: nowrap;
     }
 
     .preset-size {
       @include t.use-typography("body-small");
       color: var(--color-foreground-secondary);
+      white-space: nowrap;
     }
 
     .check-icon {
       display: flex;
       align-items: center;
-
-      svg {
-        inline-size: $sz-16;
-        block-size: $sz-16;
-        stroke: var(--color-accent-primary);
-      }
+      // DS icon* paints via `stroke: currentColor`.
+      color: var(--color-accent-primary);
     }
 
     &.disabled {
@@ -202,47 +200,52 @@
   min-inline-size: 0;
 }
 
-// --- Interaction select ---------------------------------------------------
-.interaction-select {
-  inline-size: 50%;
-}
-
 // --- Background color ------------------------------------------------------
 .bg-color {
   display: flex;
   align-items: center;
-  gap: var(--sp-s);
+  gap: var(--sp-xs);
 }
 
-// Native color input styled as a Penpot-like swatch. Clicking it opens the
-// OS color picker — robust in the viewer where the workspace colorpicker
-// modal can't be used.
+// Quick preset swatch (one per `bg-presets` colour).
 .bg-swatch {
-  inline-size: 24px;
-  block-size: 24px;
+  inline-size: $sz-24;
+  block-size: $sz-24;
   padding: 0;
-  border: none;
+  border: 2px solid var(--df-secondary);
   border-radius: $br-8;
-  background: none;
   cursor: pointer;
 
-  &::-webkit-color-swatch-wrapper {
-    padding: 0;
-  }
-
-  &::-webkit-color-swatch {
-    border: 1px solid var(--color-background-quaternary);
-    border-radius: $br-8;
-  }
-
-  &::-moz-color-swatch {
-    border: 1px solid var(--color-background-quaternary);
-    border-radius: $br-8;
+  &.selected {
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: 1px;
   }
 }
 
-.bg-hex {
-  @include t.use-typography("body-medium");
-  color: var(--color-foreground-primary);
-  text-transform: uppercase;
+// Eyedropper that opens the OS color picker (custom colour). It's a label
+// wrapping a visually-hidden native color input so clicking forwards to it.
+.eyedropper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: $sz-24;
+  block-size: $sz-24;
+  margin-inline-start: var(--sp-xs);
+  cursor: pointer;
+  color: var(--color-foreground-secondary);
+
+  &:hover {
+    color: var(--color-foreground-primary);
+  }
+}
+
+.bg-native-input {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  opacity: 0;
+  cursor: pointer;
 }

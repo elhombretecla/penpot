@@ -27,8 +27,7 @@
    [app.main.ui.ds.controls.numeric-input :refer [numeric-input*]]
    [app.main.ui.ds.controls.select :refer [select*]]
    [app.main.ui.ds.controls.switch :refer [switch*]]
-   [app.main.ui.ds.foundations.assets.icon :as i]
-   [app.main.ui.icons :as deprecated-icon]
+   [app.main.ui.ds.foundations.assets.icon :as i :refer [icon*]]
    [app.main.ui.workspace.sidebar.options.menus.measures :as measures]
    [app.util.dom :as dom]
    [app.util.i18n :refer [tr]]
@@ -36,8 +35,13 @@
 
 (def ^:private default-bg
   "Hex mirror of `--color-background-secondary` (the stage's default grey),
-   shown in the swatch until the user picks an explicit background."
+   used as the current value until the user picks an explicit background."
   "#e8e9ea")
+
+(def ^:private bg-presets
+  "Quick background swatches. Lowercase so they compare equal to the values
+   returned by the native color input."
+  ["#000000" "#454545" "#e8e9ea" "#ffffff"])
 
 (defn- orient
   "Lay out `width`/`height` so the longest side follows `orientation`
@@ -50,10 +54,6 @@
     (if (= orientation :horizontal)
       {:width hi :height lo}
       {:width lo :height hi})))
-
-(defn- hex-label
-  [hex]
-  (-> (or hex default-bg) (subs 1) (.toUpperCase)))
 
 (mf/defc device-view-controls*
   [{:keys [settings default-dims on-change]}]
@@ -168,15 +168,24 @@
          (fn [value]
            (on-change {:mockup? value})))
 
-        ;; Background color: a native color input styled as a swatch. The
-        ;; workspace colorpicker modal can't be reused here — it positions
-        ;; itself against the workspace viewport (`refs/workspace-local`),
-        ;; which is nil in the viewer — so we keep it simple and robust.
+        ;; Background color: quick preset swatches + an eyedropper that opens
+        ;; the native OS color picker for custom colors. The workspace
+        ;; colorpicker modal can't be reused here — it positions itself
+        ;; against the workspace viewport (`refs/workspace-local`), nil in the
+        ;; viewer — so we keep it simple and robust.
+        current-bg (.toLowerCase (or bg-color default-bg))
+
         on-bg-change
         (mf/use-fn
          (mf/deps on-change)
          (fn [event]
-           (on-change {:bg-color (dom/get-target-val event)})))]
+           (on-change {:bg-color (dom/get-target-val event)})))
+
+        on-swatch-click
+        (mf/use-fn
+         (mf/deps on-change)
+         (fn [event]
+           (on-change {:bg-color (dom/get-data (dom/get-current-target event) "color")})))]
 
     [:div {:class (stl/css :device-view) :ref root-ref}
      [:> icon-button* {:variant "ghost"
@@ -201,7 +210,8 @@
                :ref preset-ref
                :on-click on-preset-toggle}
          [:span {:class (stl/css :select-name)} label]
-         [:span {:class (stl/css :collapsed-icon)} deprecated-icon/arrow]
+         [:span {:class (stl/css :collapsed-icon)}
+          [:> icon* {:icon-id i/arrow-down :size "s"}]]
          [:& dropdown {:show preset-open?
                        :on-close on-preset-close
                        :container preset-ref}
@@ -226,7 +236,8 @@
                   [:span {:class (stl/css :preset-size)}
                    (mth/round (:width default-dims 0)) " x " (mth/round (:height default-dims 0))]]
                  (when default?
-                   [:span {:class (stl/css :check-icon)} deprecated-icon/tick])]))
+                   [:span {:class (stl/css :check-icon)}
+                    [:> icon* {:icon-id i/tick :size "s"}]])]))
             (if (empty? filtered-presets)
               [:li {:class (stl/css-case :dropdown-element true :disabled true)}
                [:span {:class (stl/css :preset-name)}
@@ -249,7 +260,8 @@
                       [:span {:class (stl/css :preset-size)}
                        (:width preset) " x " (:height preset)]]
                      (when match?
-                       [:span {:class (stl/css :check-icon)} deprecated-icon/tick])]))))]]]]
+                       [:span {:class (stl/css :check-icon)}
+                        [:> icon* {:icon-id i/tick :size "s"}]])]))))]]]]
 
         [:& radio-buttons {:selected (d/name cur-orient)
                            :on-change on-orientation-change
@@ -304,9 +316,22 @@
         [:span {:class (stl/css :row-label)}
          (tr "viewer.html-mode.device-view.background")]
         [:div {:class (stl/css :bg-color)}
-         [:input {:type "color"
-                  :class (stl/css :bg-swatch)
-                  :value (or bg-color default-bg)
-                  :aria-label (tr "viewer.html-mode.device-view.background")
-                  :on-change on-bg-change}]
-         [:span {:class (stl/css :bg-hex)} (hex-label bg-color)]]]]]]))
+         (for [hex bg-presets]
+           [:button {:key hex
+                     :type "button"
+                     :class (stl/css-case :bg-swatch true
+                                          :selected (= current-bg hex))
+                     :data-color hex
+                     :style {:background-color hex}
+                     :aria-label hex
+                     :on-click on-swatch-click}])
+         ;; Eyedropper: a label wrapping a visually-hidden native color
+         ;; input, so clicking it opens the OS picker for a custom colour.
+         [:label {:class (stl/css :eyedropper)
+                  :title (tr "viewer.html-mode.device-view.background")}
+          [:> icon* {:icon-id i/picker :size "m"}]
+          [:input {:type "color"
+                   :class (stl/css :bg-native-input)
+                   :value current-bg
+                   :aria-label (tr "viewer.html-mode.device-view.background")
+                   :on-change on-bg-change}]]]]]]]))
