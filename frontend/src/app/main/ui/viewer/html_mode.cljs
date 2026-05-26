@@ -1131,7 +1131,7 @@
      ;; pointerdown. `*` + `!important` so links / buttons don't restore the
      ;; pointer cursor.
      "  body.penpot-touch-mode, body.penpot-touch-mode * {\n"
-     "    cursor: url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%3E%3Ccircle%20cx='12'%20cy='12'%20r='10'%20fill='black'%20fill-opacity='0.2'%20stroke='black'%20stroke-opacity='0.45'%20stroke-width='1.5'/%3E%3C/svg%3E\") 12 12, auto !important;\n"
+     "    cursor: url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='32'%20height='32'%3E%3Ccircle%20cx='16'%20cy='16'%20r='13'%20fill='white'%20fill-opacity='0.35'%20stroke='white'%20stroke-opacity='0.95'%20stroke-width='3'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='13'%20fill='none'%20stroke='black'%20stroke-opacity='0.6'%20stroke-width='1.5'/%3E%3C/svg%3E\") 16 16, auto !important;\n"
      "  }\n"
      "  @keyframes penpot-tap-ripple {\n"
      "    0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0.5; }\n"
