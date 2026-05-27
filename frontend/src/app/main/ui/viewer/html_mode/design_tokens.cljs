@@ -879,28 +879,32 @@
              (str (count filtered) " / " (count tokens) " "
                   (tr "viewer.html-mode.design-tokens.tokens"))]]
 
+           ;; `.grid-scroll` is the full-width scroll container so the
+           ;; scrollbar sits flush against the viewport's right edge;
+           ;; `.grid-inner` carries the centred 1000px max-width layout.
            [:div {:class (stl/css :grid-scroll)}
-            (if (zero? (count filtered))
-              [:p {:class (stl/css :no-results)}
-               (tr "viewer.html-mode.design-tokens.no-results")]
-              (for [cat category-order
-                    :let [items (get grouped cat)]
-                    :when (seq items)]
-                [:section {:key (clojure.core/name cat)
-                           :id (str "cat-" (clojure.core/name cat))
-                           :class (stl/css :category-section)}
-                 [:h3 {:class (stl/css :category-title)}
-                  [:span (tr (category->i18n cat))]
-                  [:span {:class (stl/css :category-count)}
-                   (count items)]]
-                 [:div {:class (stl/css-case
-                                :token-grid true
-                                :token-grid-colors (= cat :color))}
-                  (for [t items]
-                    [:> token-card* {:key (:name t)
-                                     :token t
-                                     :format format
-                                     :on-show-usage on-show-usage}])]]))]]
+            [:div {:class (stl/css :grid-inner)}
+             (if (zero? (count filtered))
+               [:p {:class (stl/css :no-results)}
+                (tr "viewer.html-mode.design-tokens.no-results")]
+               (for [cat category-order
+                     :let [items (get grouped cat)]
+                     :when (seq items)]
+                 [:section {:key (clojure.core/name cat)
+                            :id (str "cat-" (clojure.core/name cat))
+                            :class (stl/css :category-section)}
+                  [:h3 {:class (stl/css :category-title)}
+                   [:span (tr (category->i18n cat))]
+                   [:span {:class (stl/css :category-count)}
+                    (count items)]]
+                  [:div {:class (stl/css-case
+                                 :token-grid true
+                                 :token-grid-colors (= cat :color))}
+                   (for [t items]
+                     [:> token-card* {:key (:name t)
+                                      :token t
+                                      :format format
+                                      :on-show-usage on-show-usage}])]]))]]]
 
           "code"
           [:*

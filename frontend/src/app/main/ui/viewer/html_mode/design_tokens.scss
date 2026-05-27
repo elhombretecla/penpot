@@ -197,9 +197,16 @@
 // ---------------------------------------------------------------------------
 // Grid scroll + category sections
 
+// Full-width scroll container: the vertical scrollbar sits at the far
+// right of the viewport, not at the edge of the centred content. The
+// 1000px max-width + centring live on `.grid-inner` so the content
+// keeps the exact same visual width as before.
 .grid-scroll {
   flex: 1;
   overflow-y: auto;
+}
+
+.grid-inner {
   padding-block: var(--sp-m);
   padding-inline: var(--sp-m);
   display: flex;
@@ -450,6 +457,13 @@
   font-family: "Roboto Mono", monospace;
   font-size: 12px;
   line-height: 1.6;
+
+  // The viewer root sets `user-select: none` (see `.viewer-layout` /
+  // `.inspect-layout` in viewer.scss) to avoid text-drags during
+  // inspection; that inherits down to here and makes the generated CSS
+  // unselectable. Re-enable selection on just this block so the code can
+  // be selected and copied.
+  user-select: text;
 
   // Syntax-highlighting palette is published as CSS variables in
   // `export_modal.scss` (with `.light` overrides for the light theme).

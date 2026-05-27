@@ -34,8 +34,11 @@
    [rumext.v2 :as mf]))
 
 (def ^:private default-bg
-  "Hex mirror of `--color-background-secondary` (the stage's default grey),
-   used as the current value until the user picks an explicit background."
+  "The preview stage's default neutral grey, kept theme-independent (it
+   mirrors the SCSS fallback on `.preview-stage` in prototype mode, which is
+   a fixed grey rather than the theme-dependent `--color-background-secondary`
+   so it looks the same in light and dark). Used as the current value until
+   the user picks an explicit background."
   "#e8e9ea")
 
 (def ^:private bg-presets

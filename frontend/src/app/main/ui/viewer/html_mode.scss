@@ -31,7 +31,13 @@
       justify-content: center;
       align-items: center;
       padding: var(--sp-xl);
-      background-color: var(--color-background-secondary);
+      // Fixed neutral grey, NOT `--color-background-secondary` (which is
+      // black in dark mode): the stage is a theme-independent preview
+      // canvas, so its default must look the same in light and dark. This
+      // is the value the device-view popover shows as the default swatch
+      // (`default-bg`); an explicit user choice overrides it via the inline
+      // `background-color` set in JSX.
+      background-color: #e8e9ea;
       overflow: auto;
     }
   }
