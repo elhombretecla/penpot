@@ -5898,6 +5898,90 @@ msgstr "Updated just now"
 msgid "viewer.html-mode.toolbar.design-tokens"
 msgstr "Design Tokens"
 
+#: src/app/main/ui/viewer/html_mode.cljs
+msgid "viewer.html-mode.toolbar.components"
+msgstr "Components"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.empty"
+msgstr "No components are used on this page"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.search-placeholder"
+msgstr "Search components"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.aria"
+msgstr "Components used on this page"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.preview-title"
+msgstr "Component preview"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.preview-loading"
+msgstr "Loading preview…"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.variants"
+msgstr "Variants"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.variant-properties"
+msgstr "Variant properties"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.section.html"
+msgstr "HTML"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.section.css"
+msgstr "CSS"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.section.tokens"
+msgstr "Design Tokens"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.copy-html"
+msgstr "Copy HTML"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.copy-css"
+msgstr "Copy CSS"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.copy-token"
+msgstr "Copy token"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.tokens-empty"
+msgstr "This component does not reference any design tokens"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.no-results"
+msgstr "No components match your search"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.preview-bg"
+msgstr "Preview background color"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.toggle-layout"
+msgstr "Toggle layout"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.format"
+msgstr "Format"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.styling"
+msgstr "Styling"
+
+#: src/app/main/ui/viewer/html_mode/components.cljs
+msgid "viewer.html-mode.components.css.tailwind-empty"
+msgstr "All styles are inlined as Tailwind utility classes."
+
 #: src/app/main/ui/viewer/html_mode/device_view.cljs
 msgid "viewer.html-mode.device-view.toggle"
 msgstr "Device view"

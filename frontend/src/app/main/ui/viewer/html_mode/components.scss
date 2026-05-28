@@ -1,0 +1,730 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) KALEIDOS INC
+
+@use "ds/_borders.scss" as *;
+@use "ds/_sizes.scss" as *;
+@use "ds/typography.scss" as t;
+
+// ---------------------------------------------------------------------------
+// Shell
+
+.components-root {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+// ---------------------------------------------------------------------------
+// Empty state (no components instantiated on this page)
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-s);
+  color: var(--color-foreground-secondary);
+}
+
+.empty-description {
+  @include t.use-typography("body-medium");
+  margin: 0;
+}
+
+// ---------------------------------------------------------------------------
+// Left sidebar
+
+.sidebar {
+  flex: none;
+  inline-size: $sz-284;
+  background-color: var(--panel-background-color);
+  border-inline-end: 1px solid var(--panel-border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-search {
+  padding-block: var(--sp-s);
+  padding-inline: var(--sp-s);
+  border-block-end: 1px solid var(--color-border-primary);
+}
+
+.sidebar-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding-block: var(--sp-s);
+  padding-inline: var(--sp-s);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+}
+
+.sidebar-no-results {
+  @include t.use-typography("body-small");
+
+  margin: 0;
+  padding: var(--sp-m) var(--sp-s);
+  color: var(--color-foreground-secondary);
+  text-align: center;
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar tree
+
+.tree-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  inline-size: 100%;
+  background: transparent;
+  border: none;
+  padding-block: var(--sp-xs);
+  padding-inline: var(--sp-xs);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--color-foreground-secondary);
+  text-align: start;
+
+  @include t.use-typography("body-small");
+
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+
+  &:hover {
+    background-color: var(--color-background-secondary);
+  }
+}
+
+.tree-group-icon {
+  color: var(--color-foreground-secondary);
+}
+
+.tree-group-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-inline-start: var(--sp-s);
+  border-inline-start: 1px solid var(--color-border-primary);
+  margin-inline-start: var(--sp-xs);
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  inline-size: 100%;
+  padding-block: var(--sp-xs);
+  padding-inline: var(--sp-s);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: start;
+  color: var(--color-foreground-primary);
+
+  @include t.use-typography("body-small");
+
+  &:hover {
+    background-color: var(--color-background-secondary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-tertiary);
+    outline-offset: -1px;
+  }
+}
+
+.tree-item-active {
+  background-color: var(--color-background-quaternary);
+  color: var(--color-accent-tertiary);
+
+  &:hover {
+    background-color: var(--color-background-quaternary);
+  }
+
+  .tree-item-icon {
+    color: var(--color-accent-tertiary);
+  }
+}
+
+.tree-item-icon {
+  color: var(--color-foreground-secondary);
+  flex: none;
+}
+
+.tree-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-item-badge {
+  @include t.use-typography("body-small");
+
+  flex: none;
+  background-color: var(--color-background-tertiary);
+  color: var(--color-foreground-secondary);
+  border-radius: 999px;
+  padding-inline: var(--sp-xs);
+  min-inline-size: 1.25rem;
+  text-align: center;
+
+  .tree-item-active & {
+    background-color: var(--color-accent-tertiary);
+    color: var(--color-background-primary);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Detail pane
+
+.detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  background-color: var(--color-background-primary);
+  overflow-y: auto;
+}
+
+.detail-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-foreground-secondary);
+}
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-m);
+  padding-block: var(--sp-m);
+  padding-inline: var(--sp-l);
+  border-block-end: 1px solid var(--color-border-primary);
+  position: sticky;
+  top: 0;
+  background-color: var(--color-background-primary);
+  z-index: 1;
+}
+
+.detail-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.detail-title {
+  @include t.use-typography("title-small");
+
+  margin: 0;
+  color: var(--color-foreground-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-path {
+  @include t.use-typography("body-small");
+
+  color: var(--color-foreground-secondary);
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-s);
+  flex: none;
+}
+
+// ---------------------------------------------------------------------------
+// Background color swatches (preview iframe backdrop).
+// Mirrors the device-view's `.bg-color` / `.bg-swatch` styles
+// (`html_mode/device_view.scss:204`) so the two surfaces look like
+// the same control.
+
+.bg-color {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+}
+
+.bg-swatch {
+  inline-size: $sz-24;
+  block-size: $sz-24;
+  padding: 0;
+  border: 2px solid var(--df-secondary);
+  border-radius: $br-8;
+  cursor: pointer;
+
+  &.selected {
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: 1px;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Layout toggle button. Reuses the DS `icon-button-secondary` variant
+// and overrides its bg/fg CSS vars when the toggle is in the alternate
+// state so the button reads as "pressed".
+
+.layout-toggle {
+  flex: none;
+}
+
+.layout-toggle-active {
+  --button-bg-color: var(--color-background-quaternary);
+  --button-fg-color: var(--color-accent-primary);
+}
+
+// ---------------------------------------------------------------------------
+// Body layout: rows (default) or columns (CodePen-like split)
+
+.detail-body {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.detail-preview {
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-m);
+  padding-block: var(--sp-m);
+  padding-inline: var(--sp-l);
+}
+
+// Rows mode (default): HTML / CSS / Tokens share a horizontal grid
+// below the preview so all three can be scanned at a glance. The grid
+// auto-fits as many 320px columns as the container allows, falling
+// back to fewer (down to a single column) when the viewport is too
+// narrow for the code to stay legible.
+.sections-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--sp-m);
+  align-items: start;
+}
+
+// Columns mode: preview on the left, sections on the right.
+// Each side scrolls independently when it overflows; the iframe
+// stays at its fixed height while the content column can grow.
+.detail-body-cols {
+  flex-direction: row;
+  align-items: flex-start;
+
+  .detail-preview {
+    flex: 1 1 50%;
+    min-inline-size: 0;
+    position: sticky;
+    top: 0;
+  }
+
+  .detail-content {
+    flex: 1 1 50%;
+    min-inline-size: 0;
+    border-inline-start: 1px solid var(--color-border-primary);
+  }
+
+  // Stack the sections vertically on the right — preview already
+  // occupies half the pane, so a 3-column grid would be unreadable.
+  .sections-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Variant chip row
+
+.variant-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-xs);
+  padding-block: var(--sp-s);
+  padding-inline: var(--sp-l);
+  border-block-end: 1px solid var(--color-border-primary);
+}
+
+.variant-chip {
+  @include t.use-typography("body-small");
+
+  background-color: var(--color-background-secondary);
+  color: var(--color-foreground-primary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 999px;
+  padding-block: var(--sp-xs);
+  padding-inline: var(--sp-s);
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    background-color: var(--color-background-tertiary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-tertiary);
+    outline-offset: 1px;
+  }
+}
+
+.variant-chip-active {
+  background-color: var(--color-accent-tertiary);
+  color: var(--color-background-primary);
+  border-color: var(--color-accent-tertiary);
+
+  &:hover {
+    background-color: var(--color-accent-tertiary);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Preview iframe
+
+.preview-wrapper {
+  display: flex;
+  flex-direction: column;
+  padding-block: var(--sp-m);
+  padding-inline: var(--sp-l);
+}
+
+.preview-iframe {
+  inline-size: 100%;
+  block-size: 360px;
+  border: 1px solid var(--color-border-primary);
+  border-radius: 8px;
+  background-color: var(--color-background-secondary);
+}
+
+.preview-loading {
+  @include t.use-typography("body-small");
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 100%;
+  block-size: 360px;
+  border: 1px dashed var(--color-border-primary);
+  border-radius: 8px;
+  color: var(--color-foreground-secondary);
+}
+
+// ---------------------------------------------------------------------------
+// Variant properties block
+
+.variant-props {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--sp-m);
+  row-gap: var(--sp-xs);
+  margin: 0;
+}
+
+.variant-props-row {
+  display: contents;
+}
+
+.variant-props-name {
+  @include t.use-typography("body-small");
+
+  color: var(--color-foreground-secondary);
+  margin: 0;
+}
+
+.variant-props-value {
+  @include t.use-typography("body-small");
+
+  color: var(--color-foreground-primary);
+  margin: 0;
+  font-weight: 500;
+}
+
+// ---------------------------------------------------------------------------
+// Section action group — sits in `section-disclosure*`'s `:action`
+// slot. Hosts the per-section FORMAT/STYLING segmented control, the
+// HEX·PX format picker, and the copy button. Wraps on narrow widths
+// (column-mode layout) so the buttons never overflow the header.
+
+.section-action-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-s);
+}
+
+// Tight icon-only copy button for the section header. Same dims as the
+// `format-picker*` trigger so the row of controls stays uniform.
+.section-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: $sz-24;
+  block-size: $sz-24;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: $br-4;
+  cursor: pointer;
+  color: var(--color-foreground-secondary);
+  flex: none;
+
+  &:hover {
+    background-color: var(--color-background-secondary);
+    color: var(--color-foreground-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Segmented control (FORMAT html/jsx, STYLING css/tailwind).
+// Mirrors the `export_modal.scss` styles so the two surfaces feel like
+// the same control.
+
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-s);
+}
+
+.segmented-label {
+  @include t.use-typography("body-small");
+
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-foreground-secondary);
+  font-weight: 600;
+}
+
+.segmented-options {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xxs);
+  padding: var(--sp-xxs);
+  background: var(--color-background-tertiary);
+  border-radius: $br-6;
+}
+
+.segmented-option {
+  @include t.use-typography("body-small");
+
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-foreground-secondary);
+  padding: var(--sp-xxs) var(--sp-s);
+  border-radius: $br-4;
+  cursor: pointer;
+  text-transform: lowercase;
+
+  &:hover {
+    color: var(--color-foreground-primary);
+  }
+}
+
+.segmented-option-active {
+  background: var(--color-background-primary);
+  color: var(--color-foreground-primary);
+  box-shadow: 0 0 0 $b-1 var(--color-background-quaternary);
+}
+
+// ---------------------------------------------------------------------------
+// Code blocks
+
+.code-wrapper {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border-primary);
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: var(--hljs-bg);
+  color: var(--hljs-fg);
+  min-inline-size: 0;
+
+  pre {
+    margin: 0;
+    padding: var(--sp-s) var(--sp-m);
+    max-block-size: 480px;
+    overflow-y: auto;
+    background: transparent;
+    color: inherit;
+
+    @include t.use-typography("code-font");
+
+    // Word-wrap so narrow columns don't require horizontal scrolling.
+    // `pre-wrap` preserves the formatter's indentation while still
+    // wrapping at whitespace; `overflow-wrap: anywhere` lets very long
+    // attribute strings (eg Tailwind utility lists) break inside a word
+    // rather than overflow.
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  // Syntax-highlighting theme — mirrors the Export Shape modal's
+  // mapping (`export_modal.scss`) using the shared `--hljs-*` custom
+  // properties published there (Dracula Dark / Alucard Light).
+  // highlight.js wraps tokens in `<span class="hljs-…">` nodes; we
+  // reach them via `:global(...)` because they're injected at
+  // runtime and so live outside this module's local scope.
+
+  :global(.hljs-comment),
+  :global(.hljs-quote) {
+    color: var(--hljs-comment);
+    font-style: italic;
+  }
+
+  :global(.hljs-keyword),
+  :global(.hljs-tag),
+  :global(.hljs-name),
+  :global(.hljs-selector-tag),
+  :global(.hljs-doctag),
+  :global(.hljs-meta),
+  :global(.hljs-literal) {
+    color: var(--hljs-keyword);
+  }
+
+  :global(.hljs-string),
+  :global(.hljs-attribute-value),
+  :global(.hljs-regexp),
+  :global(.hljs-template-tag),
+  :global(.hljs-template-variable) {
+    color: var(--hljs-string);
+  }
+
+  :global(.hljs-number),
+  :global(.hljs-symbol),
+  :global(.hljs-bullet) {
+    color: var(--hljs-number);
+  }
+
+  :global(.hljs-attr),
+  :global(.hljs-attribute) {
+    color: var(--hljs-attribute);
+  }
+
+  :global(.hljs-property),
+  :global(.hljs-built_in),
+  :global(.hljs-title),
+  :global(.hljs-class .hljs-title),
+  :global(.hljs-function .hljs-title),
+  :global(.hljs-params),
+  :global(.hljs-variable) {
+    color: var(--hljs-property);
+  }
+
+  :global(.hljs-selector-class),
+  :global(.hljs-selector-id),
+  :global(.hljs-selector-pseudo),
+  :global(.hljs-selector-attr) {
+    color: var(--hljs-selector);
+  }
+
+  :global(.hljs-punctuation),
+  :global(.hljs-operator) {
+    color: var(--hljs-punct);
+  }
+}
+
+// Shown in place of the CSS code block when the user selects
+// `styling = tailwind` (utilities are inlined as classes on the HTML).
+.code-empty-hint {
+  @include t.use-typography("body-small");
+
+  margin: 0;
+  padding: var(--sp-m);
+  color: var(--color-foreground-secondary);
+  text-align: center;
+  border: 1px dashed var(--color-border-primary);
+  border-radius: 6px;
+}
+
+// ---------------------------------------------------------------------------
+// Tokens list
+
+.tokens-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border-primary);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tokens-empty {
+  @include t.use-typography("body-small");
+
+  margin: 0;
+  padding: var(--sp-m);
+  color: var(--color-foreground-secondary);
+  text-align: center;
+  border: 1px dashed var(--color-border-primary);
+  border-radius: 6px;
+}
+
+.token-row {
+  display: grid;
+  grid-template-columns: max-content 1fr auto;
+  align-items: center;
+  gap: var(--sp-m);
+  padding-block: var(--sp-xs);
+  padding-inline: var(--sp-m);
+
+  &:not(:last-child) {
+    border-block-end: 1px solid var(--color-border-primary);
+  }
+}
+
+.token-row-name {
+  @include t.use-typography("code-font");
+
+  color: var(--color-accent-tertiary);
+}
+
+.token-row-value {
+  @include t.use-typography("code-font");
+
+  color: var(--color-foreground-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-row-copy {
+  flex: none;
+}

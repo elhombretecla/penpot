@@ -90,6 +90,7 @@
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :as i]
    [app.main.ui.ds.layout.tab-switcher :refer [tab-switcher*]]
+   [app.main.ui.viewer.html-mode.components :refer [components-view*]]
    [app.main.ui.viewer.html-mode.design-tokens :refer [design-tokens-view*]]
    [app.main.ui.viewer.html-mode.device-view :refer [device-view-controls*]]
    [app.main.ui.viewer.html-mode.export-modal]
@@ -2226,7 +2227,9 @@
                                  {:id "workspace"
                                   :label (tr "viewer.html-mode.toolbar.workspace")}
                                  {:id "design-tokens"
-                                  :label (tr "viewer.html-mode.toolbar.design-tokens")}]
+                                  :label (tr "viewer.html-mode.toolbar.design-tokens")}
+                                 {:id "components"
+                                  :label (tr "viewer.html-mode.toolbar.components")}]
                           :selected mode-str
                           :on-change on-mode-change}]
        ;; Device-view controls live in the toolbar's right zone
@@ -2238,14 +2241,22 @@
            :default-dims (board-dims (or (find-frame-by-id-str page current-frame-id) frame))
            :on-change on-device-view-change}])]
 
-      (if (= mode :design-tokens)
+      (cond
         ;; Design Tokens mode renders its own panel layout (left sub-
         ;; sidebar with sub-tabs + main content area), so it bypasses
         ;; the iframe-driven `:empty/:loading/:error/:ready` state
         ;; machine entirely. `file` carries the `:tokens-lib` the
         ;; DTCG JSON exporter consumes.
+        (= mode :design-tokens)
         [:> design-tokens-view* {:page page :file file}]
 
+        ;; Components mode (Storybook-like browser) also bypasses the
+        ;; iframe state machine — it manages its own per-component
+        ;; preview iframes via the html-converter.
+        (= mode :components)
+        [:> components-view* {:page page :file file}]
+
+        :else
         (case status
           :empty
           [:div {:class (stl/css :state)}

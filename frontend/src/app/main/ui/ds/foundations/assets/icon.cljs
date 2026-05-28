@@ -189,6 +189,7 @@
 (def ^:icon-id justify-content-row-evenly "justify-content-row-evenly")
 (def ^:icon-id justify-content-row-start "justify-content-row-start")
 (def ^:icon-id layers "layers")
+(def ^:icon-id layout-panel-top "layout-panel-top")
 (def ^:icon-id library "library")
 (def ^:icon-id locate "locate")
 (def ^:icon-id lock "lock")

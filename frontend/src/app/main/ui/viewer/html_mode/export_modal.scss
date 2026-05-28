@@ -482,51 +482,56 @@
 }
 
 // ---------------------------------------------------------------------------
-// Syntax-highlighting theme
+// Syntax-highlighting theme (Dracula)
 //
 // `highlight.js` wraps tokens in `<span class="hljs-…">` nodes. We expose
 // only the categories we need — tags, attributes, strings, numbers,
 // keywords, comments, selectors / properties / values for CSS — and bind
-// each to a soft palette that reads well on the design-system's
-// `--color-background-primary` surface in BOTH dark and light themes.
+// each to the Dracula palette (https://draculatheme.com/).
+//
+//   Penpot dark theme  → Dracula Dark  (#282A36 backdrop)
+//   Penpot light theme → Alucard      (#F8F8F2 backdrop)
 //
 // Palette is published as CSS custom properties so any consumer (the
-// export modal here, the Design Tokens CSS view, …) gets the same
-// theme-aware colours just by referencing `var(--hljs-…)`.
+// export modal here, the Components tab, the Design Tokens CSS view, …)
+// gets the same theme-aware colours just by referencing `var(--hljs-…)`.
 
 :root {
-  // Defaults — these are the dark-theme values. Light-theme overrides
-  // live next to Penpot's other `.light` token overrides further below.
-  // Tuned to read well on `var(--color-background-primary)` in dark.
-  --hljs-keyword: #c792ea;        // tag names, JS keywords, CSS at-rules
-  --hljs-string: #c3e88d;         // strings, attribute values
-  --hljs-number: #f78c6c;         // numeric & length values
-  --hljs-property: #82aaff;       // CSS property names, JS object keys
-  --hljs-attribute: #ffcb6b;      // HTML attribute names
-  --hljs-selector: #f07178;       // CSS selectors (class / id / pseudo)
-  --hljs-comment: #6a8595;        // any kind of comment
-  --hljs-punct: var(--color-foreground-secondary);
+  // Dracula Dark — these are the defaults; Penpot defaults to dark.
+  // Tuned to land exactly on Dracula's reference palette so the
+  // surface, foreground, and per-category hues line up with the
+  // theme's spec rather than fighting Penpot's UI tokens.
+  --hljs-bg: #282a36;             // Dracula background
+  --hljs-fg: #f8f8f2;             // Dracula foreground (default text)
+  --hljs-keyword: #ff79c6;        // pink — tags, keywords, CSS at-rules
+  --hljs-string: #f1fa8c;         // yellow — strings, attribute values
+  --hljs-number: #bd93f9;         // purple — numeric & length values
+  --hljs-property: #8be9fd;       // cyan — CSS property names, JS keys
+  --hljs-attribute: #50fa7b;      // green — HTML attribute names
+  --hljs-selector: #50fa7b;       // green — CSS class / id / pseudo
+  --hljs-comment: #6272a4;        // muted blue — comments
+  --hljs-punct: #f8f8f2;          // foreground — punctuation, operators
 }
 
-// Light theme — the pastel palette above bleaches out on white. These
-// values mirror Atom One Light's hues: enough chroma to read on
-// `--color-background-primary` in light without overpowering the
-// surrounding UI.
+// Light theme (Alucard) — the Dracula light variant. Same hue family
+// but with enough chroma to read on a near-white backdrop without
+// overpowering the surrounding UI.
 :global(.light) {
-  --hljs-keyword: #a626a4;        // saturated purple
-  --hljs-string: #50a14f;         // mid green
-  --hljs-number: #986801;         // dark amber
-  --hljs-property: #4078f2;       // saturated blue
-  --hljs-attribute: #c18401;      // amber
-  --hljs-selector: #e45649;       // red
-  --hljs-comment: #a0a1a7;        // mid gray
+  --hljs-bg: #f8f8f2;
+  --hljs-fg: #1f1f1f;
+  --hljs-keyword: #a3144d;        // deep magenta
+  --hljs-string: #836a00;         // olive
+  --hljs-number: #644ac9;         // rich purple
+  --hljs-property: #036a96;       // dark cyan
+  --hljs-attribute: #14710a;      // deep green
+  --hljs-selector: #14710a;
+  --hljs-comment: #635d85;        // purple-grey
+  --hljs-punct: #1f1f1f;
 }
 
 .code-block-content.hljs {
-  // hljs ships its own .hljs styling — we override here so the surface
-  // and default text track Penpot's design tokens.
-  background: var(--color-background-primary);
-  color: var(--color-foreground-primary);
+  background: var(--hljs-bg);
+  color: var(--hljs-fg);
 }
 
 .code-block-content {

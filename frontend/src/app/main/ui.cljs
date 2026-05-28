@@ -298,11 +298,12 @@
              frame-id (some-> (:frame-id params) uuid/parse*)
              share    (:share params)
              ;; HTML-Mode-specific: which of the sub-views to show —
-             ;; `workspace` (default), `prototype`, or `design-tokens`.
-             ;; Lives in the URL so the mode is shareable.
+             ;; `workspace` (default), `prototype`, `design-tokens` or
+             ;; `components`. Lives in the URL so the mode is shareable.
              html-mode (case (:mode params)
                          "prototype"     :prototype
                          "design-tokens" :design-tokens
+                         "components"    :components
                          :workspace)]
 
          [:? {}
