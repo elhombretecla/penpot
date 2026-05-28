@@ -11,6 +11,7 @@
    [app.common.data.macros :as dm]
    [app.common.files.helpers :as cfh]
    [app.common.geom.matrix :as gmt]
+   [app.common.geom.rect :as grc]
    [app.common.geom.shapes :as gsh]
    [app.common.types.shape.layout :as ctl]
    [app.main.ui.formats :as fmt]
@@ -31,17 +32,21 @@
              (or (not (ctl/any-layout-immediate-child? objects shape))
                  (ctl/position-absolute? shape)))
 
-    (let [parent (get objects (:parent-id shape))
+    (when-let [parent (get objects (:parent-id shape))]
+      ;; Skip when the parent has no usable geometry — happens for synthetic
+      ;; pages (e.g. viewer's components mode) where a descendant's
+      ;; :parent-id can point outside the rebuilt subtree, or when :selrect
+      ;; isn't a Rect record. Without this guard, shape->center asserts.
+      (when (grc/rect? (:selrect parent))
+        (let [parent-value (dm/get-in parent [:selrect coord])
 
-          parent-value (dm/get-in parent [:selrect coord])
+              [selrect _ _]
+              (-> (:points shape)
+                  (gsh/transform-points (gsh/shape->center parent) (:transform-inverse parent (gmt/matrix)))
+                  (gsh/calculate-geometry))
 
-          [selrect _ _]
-          (-> (:points shape)
-              (gsh/transform-points (gsh/shape->center parent) (:transform-inverse parent (gmt/matrix)))
-              (gsh/calculate-geometry))
-
-          shape-value (get selrect coord)]
-      (- shape-value parent-value))))
+              shape-value (get selrect coord)]
+          (- shape-value parent-value))))))
 
 (defn get-shape-size
   [shape objects type]
