@@ -15,6 +15,7 @@
    [app.common.geom.shapes.bounds :as gsb]
    [app.common.types.shape.interactions :as ctsi]
    [app.common.types.text :as txt]
+   [app.config :as cf]
    [app.main.data.comments :as dcm]
    [app.main.data.viewer :as dv]
    [app.main.data.viewer.shortcuts :as sc]
@@ -291,7 +292,13 @@
                       (or (:can-edit permissions)
                           (and (true? (:is-logged permissions))
                                (= (:who-inspect permissions) "all"))))
+                 ;; HTML Mode is experimental: the section is reachable
+                 ;; only while the `html-mode` flag is enabled, mirroring
+                 ;; the gating of its entry points (the viewer header and
+                 ;; the workspace toolbar). Without the flag check a direct
+                 ;; `?section=html` URL would bypass the flag entirely.
                  (and (= section :html)
+                      (contains? cf/flags :html-mode)
                       (or (:can-edit permissions)
                           (and (true? (:is-logged permissions))
                                (= (:who-inspect permissions) "all")))))

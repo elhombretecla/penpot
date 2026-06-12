@@ -54,6 +54,17 @@
       (update :email obfuscate-email)
       (assoc :can-read true)))
 
+(defn- can-inspect?
+  "True when the requester is allowed to use the inspect-grade viewer
+   sections (Inspect and HTML Mode): file members with edit rights, or
+   share-link visitors whose link grants `who-inspect = \"all\"`.
+   Mirrors the frontend gate in `app.main.ui.viewer/viewer-content*`."
+  [perms]
+  (boolean
+   (or (:can-edit perms)
+       (and (:is-logged perms)
+            (= "all" (:who-inspect perms))))))
+
 (defn- get-view-only-bundle
   [{:keys [::db/conn] :as cfg} {:keys [profile-id file-id ::perms] :as params}]
   (let [file    (bfc/get-file cfg file-id)
@@ -77,19 +88,26 @@
                     (cfeat/check-client-features! (:features params))
                     (cfeat/check-file-features! (:features file)))
 
+        ;; `:tokens-lib` feeds the HTML Mode Design Tokens panel (token
+        ;; inventory + the same DTCG JSON export the workspace tokens
+        ;; sidebar offers). The library is file-global — it is NOT
+        ;; trimmed by the share-link page filter above — so it is only
+        ;; included when the requester could reach HTML Mode anyway:
+        ;; the `html-mode` flag is on AND the perms grant inspect
+        ;; access. Plain view-only visitors get the same bundle as
+        ;; before the feature existed.
+        bundle-keys
+        (cond-> [:id :options :pages :pages-index :components]
+          (and (contains? cf/flags :html-mode)
+               (can-inspect? perms))
+          (conj :tokens-lib))
+
         file    (cond-> file
                   (= :share-link (:type perms))
                   (update :data remove-not-allowed-pages (:pages perms))
 
                   :always
-                  ;; `:tokens-lib` is included so the HTML Mode Design
-                  ;; Tokens panel can render the inventory and offer
-                  ;; the same DTCG JSON export the workspace exposes
-                  ;; via its tokens sidebar. Design tokens are visual
-                  ;; data — they don't leak anything beyond what the
-                  ;; rendered preview already shows.
-                  (update :data select-keys
-                          [:id :options :pages :pages-index :components :tokens-lib]))
+                  (update :data select-keys bundle-keys))
 
         libs    (->> (bfc/get-file-libraries conn file-id)
                      (mapv (fn [{:keys [id] :as lib}]
