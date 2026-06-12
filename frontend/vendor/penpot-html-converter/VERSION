@@ -5,12 +5,23 @@ snapshot-date: 2026-05-18
 
 modifications:
 - Removed dynamic `oxfmt` import in src/converter/index.ts (formatHtml is now a no-op).
-- Dropped src/converter/shape-code.ts and src/converter/semantics-store.ts (unused by Penpot integration; they were the only other oxfmt consumers).
+- Replaced upstream src/converter/shape-code.ts with a LOCAL TypeScript port
+  (maintained in-tree, preserved by scripts/sync-html-converter.sh across
+  snapshots). It drops oxfmt and `pageToCode`, validates rule tags against
+  SEMANTIC_TAGS, and adds a final class→className sweep for JSX. The
+  `dist/converter/shape-code.*` artifacts are compiled from this file.
+  When updating the snapshot, diff upstream's shape-code.ts manually and
+  port over anything relevant.
+- Dropped src/converter/semantics-store.ts (node:fs-based, unusable in the
+  browser bundle; Penpot stores semantic rules in
+  app.main.data.html-mode.semantics instead).
 - Dropped all *.test.ts and *.integration.test.ts files (upstream test suite stays in penpot-tools).
 - Wrote a self-contained tsconfig.json targeting ES2022 ESM with declarations.
 - Extended `extractAllTokens` (src/converter/tokens.ts) to resolve every applied
   token attribute Penpot supports — opacity, shadow, composite typography,
   fontWeight and x/y — which were previously dropped, and added `opacity`/`shadow`
-  to `TokenCategory`. Only `dist/converter/tokens.*` and `dist/penpot.types.d.ts`
-  were re-emitted (the rest of `dist` is left as-is to avoid reverting unrelated
-  src/dist drift in this snapshot).
+  to `TokenCategory`. Only `dist/converter/tokens.*`, `dist/penpot.types.d.ts`
+  and `dist/converter/shape-code.*` were re-emitted (the rest of `dist` is left
+  as-is to avoid reverting unrelated src/dist drift in this snapshot; note that
+  src/converter/shapes/text.ts currently does not type-check under tsc >= 6,
+  so a full re-emit requires fixing that drift first).

@@ -29,6 +29,7 @@
       "default": "./dist/converter/decl.js"
     },
     "./shape-code": {
+      "types": "./dist/converter/shape-code.d.ts",
       "default": "./dist/converter/shape-code.js"
     }
   },
