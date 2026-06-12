@@ -112,18 +112,22 @@ HTML Mode is built on three pillars:
    changes.
 
 3. **Native Penpot UI on top.**
-   `app.main.ui.viewer.html-mode` is a regular rumext component that
-   sits next to the existing viewer sections (`interactions`,
-   `inspect`, `comments`). It owns the sandboxed iframe, the
-   click-to-select postMessage bridge, the LRU cache, and the live
-   refresh logic. The sidebar
-   (`app.main.ui.viewer.html-mode.sidebar`) is built from the
-   standard Penpot design-system primitives. A tab switcher in the
-   preview toolbar lets the user flip between **Workspace** (the
-   inspector flow described above), **Prototype** (a fully
-   interactive runner for the file's prototype interactions; see
+   `app.main.ui.html-mode` is a standalone top-level mode with its own
+   route (`#/html?file-id=…`), its own JS module
+   (`:main-html-mode`), its own state subtree (`:html-mode` /
+   `:html-mode-local`, fetched through the shared
+   `app.main.data.view-bundle` helper) and its own header — it does
+   not depend on the SVG viewer. The page component owns the
+   sandboxed iframe, the click-to-select postMessage bridge, the LRU
+   cache, and the live refresh logic. The sidebar
+   (`app.main.ui.html-mode.sidebar`) is built from the standard
+   Penpot design-system primitives. The header's mode-zone lets the
+   user flip between **Workspace** (the inspector flow described
+   above), **Prototype** (a fully interactive runner for the file's
+   prototype interactions; see
    [`3.13. HTML Mode — Prototype Interactions`](./html-mode-prototype-interactions.md)),
-   and **Design Tokens**.
+   **Design Tokens** and **Components**. Legacy
+   `/view?section=html` URLs redirect to the new route.
 
 ## Caching and refresh
 
@@ -171,7 +175,7 @@ and escape entirely. The trade-off is accepted because:
   types; anything else is ignored.
 
 The full threat model is documented in the namespace docstring of
-`app.main.ui.viewer.html-mode`.
+`app.main.ui.html-mode`.
 
 ## Current limitations
 
@@ -195,3 +199,59 @@ Unit tests for the pure helpers live under
   grouping for the sidebar.
 
 Run them with `pnpm run test` from `frontend/` inside the devenv.
+
+Additional namespaces covered since the standalone split:
+
+- `html-mode-events-test` — state lifecycle (initialize / finalize /
+  bundle-fetched), mode-local zoom, query-param parsing.
+- `html-mode-prototype-test` — the postMessage bridge protocol
+  (projection + re-hydration round-trip), overlay geometry, WAAPI
+  keyframe vocabulary.
+- `html-mode-preview-doc-test` — the iframe document builders,
+  including the interpolation-safety (XSS) guarantees.
+
+## Roadmap (v2)
+
+Pending follow-ups after the standalone split (each is intended as
+its own PR):
+
+1. **Manual verification of the split** (if not done yet): workspace
+   button opens `#/html`; the four sections switch from the header
+   mode-zone; Prototype animated navigate / overlays / prev-screen /
+   board picker; `?frame-id=` survives reload; zoom isolated from an
+   open viewer tab; Share from HTML Mode produces `#/html?...&share-id=`
+   URLs while the viewer keeps producing `#/view?...`; legacy
+   `#/view?...&section=html&index=N` redirects; share-link with
+   `who-inspect=all` works in an incognito window; the viewer shows
+   no trace of HTML Mode.
+2. **Fullscreen** for the HTML Mode page (the viewer's
+   `fullscreen-ref` mechanism was intentionally not carried over).
+3. **Zoom-to-fit / zoom-to-fill** for the CSS `zoom` container
+   (needs viewport-size tracking; the current widget is −/%/+/reset).
+4. **Remove the legacy redirect shim** (`html-mode-redirect*` in
+   `app.main.ui`, the `section=html` branch) after one release.
+5. **Share-link UX polish**: a login affordance inside the page for
+   denied visitors (today it navigates to `:auth-login`), and
+   deciding whether anonymous visitors should get the tokens
+   inventory (the backend currently gates `:tokens-lib` on logged-in
+   inspect permission — see `backend/src/app/rpc/commands/viewer.clj`).
+6. **Upstream proposal**: HTML Mode as a separate mode is now
+   self-contained (own route/module/state; zero requires on
+   `app.main.ui.viewer` / `app.main.data.viewer`), which is the shape
+   an upstream contribution would need.
+
+Operational notes for whoever picks this up:
+
+- Build/test inside the devenv: `./manage.sh run-devenv`, then
+  `docker exec -u 1000:1000 penpot-devenv-ws0-main bash -c "cd
+  /home/penpot/penpot/frontend && clojure -M:dev:shadow-cljs compile
+  main"` (always pass `-u 1000:1000`; the container's default user is
+  root and root-owned `.shadow-cljs` / `target` caches break the
+  watch). Tests: compile the `test` build the same way, then `node
+  target/tests/test.js` from `frontend/` (add
+  `--focus <test-namespace>` to scope).
+- The vendored converter is reproducible: `src/` = upstream pinned
+  commit + `patches/penpot-local.patch` + the local
+  `shape-code.ts` port; `dist/` = `tsc(src)`. Never edit `dist/`
+  directly; regenerate the patch when changing vendored sources
+  (see the header of `scripts/sync-html-converter.sh`).

@@ -254,7 +254,7 @@ hit different converter entry points and need different layouts.
 
 ### Modified
 
-#### `frontend/src/app/main/ui/viewer/html_mode.cljs`
+#### `frontend/src/app/main/ui/html_mode.cljs`
 
 All new logic lives here, grouped by concern:
 
@@ -273,7 +273,7 @@ All new logic lives here, grouped by concern:
 | `nav-to-frame-index!`              | Sync the URL `?index=` to a given frame-id. Called on every controller-driven navigation (animated, instant, prev-screen) so the viewer header breadcrumb / pagination reflect the current board. |
 | `html-mode-section*` (component)   | Hosts the prototype controller: `proto-state*` (nav stack, overlays, transition), `layer-refs*` (ref map keyed by frame-id), `rendered-frame-id*` (guard against redundant render-effect work), `dispatch-prototype-trigger`, frame-prop sync effect, WAAPI animation effect, extended postMessage listener, and the layered JSX (`.board-layer`-per-board) + overlay JSX. |
 
-#### `frontend/src/app/main/ui/viewer/html_mode.scss`
+#### `frontend/src/app/main/ui/html_mode.scss`
 
 Classes used by prototype mode:
 
@@ -477,7 +477,7 @@ free. It never reads or writes the parent's DOM — only posts messages.
 The prototype iframe carries the same sandbox attributes as the
 workspace iframe: `sandbox="allow-scripts allow-same-origin"`. The
 full threat model is in the namespace docstring of
-`app.main.ui.viewer.html-mode` (and in
+`app.main.ui.html-mode` (and in
 [`3.12. HTML Mode`](./html-mode.md#sandbox-and-security)). Summary:
 
 - The combination is effectively no sandbox at all (scripts can
