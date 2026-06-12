@@ -8,6 +8,7 @@
    [frontend-tests.copy-as-svg-test]
    [frontend-tests.data.html-mode-adapter-test]
    [frontend-tests.data.html-mode-cache-test]
+   [frontend-tests.data.html-mode-prototype-test]
    [frontend-tests.data.html-mode-style-parse-test]
    [frontend-tests.data.nitrate-test]
    [frontend-tests.data.repo-test]
@@ -60,6 +61,7 @@
     frontend-tests.copy-as-svg-test
     frontend-tests.data.html-mode-adapter-test
     frontend-tests.data.html-mode-cache-test
+    frontend-tests.data.html-mode-prototype-test
     frontend-tests.data.html-mode-style-parse-test
     frontend-tests.data.nitrate-test
     frontend-tests.data.repo-test

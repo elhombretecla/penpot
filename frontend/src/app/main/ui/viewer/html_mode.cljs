@@ -74,14 +74,13 @@
   (:require-macros [app.main.style :as stl])
   (:require
    ["@penpot/html-converter" :as cv]
-   [app.common.geom.point :as gpt]
-   [app.common.geom.shapes.bounds :as gsb]
    [app.common.types.shape.interactions :as ctsi]
    [app.common.uuid :as uuid]
    [app.main.data.html-mode :as dhtml]
    [app.main.data.html-mode.adapter :as adapter]
    [app.main.data.html-mode.cache :as cache]
    [app.main.data.html-mode.converter-ctx :as cctx]
+   [app.main.data.html-mode.prototype :as proto]
    [app.main.data.viewer :as dv]
    [app.main.fonts :as fonts]
    [app.main.refs :as refs]
@@ -98,7 +97,6 @@
    [app.main.ui.viewer.html-mode.sidebar :refer [html-mode-sidebar*]]
    [app.util.dom :as dom]
    [app.util.i18n :refer [tr]]
-   [app.util.object :as obj]
    [beicon.v2.core :as rx]
    [rumext.v2 :as mf]))
 
@@ -218,52 +216,11 @@
 ;; bits that need parent-level orchestration (board swap, overlay
 ;; mounting, animations).
 
-(defn- ->js-animation
-  "Project a Penpot animation map onto a JSON-serialisable shape the
-   iframe runtime understands. Keys are camelCased and keywords are
-   stringified, matching the convention used by `adapter/->js-page`."
-  [animation]
-  (when animation
-    (let [t (some-> (:animation-type animation) name)]
-      (cond-> {:type t
-               :duration (:duration animation)
-               :easing (some-> (:easing animation) name)}
-        (= t "slide") (assoc :way (some-> (:way animation) name)
-                             :direction (some-> (:direction animation) name)
-                             :offsetEffect (boolean (:offset-effect animation)))
-        (= t "push")  (assoc :direction (some-> (:direction animation) name))))))
-
-(defn- ->js-interaction
-  "Project a Penpot interaction map onto a JSON-serialisable shape
-   the iframe runtime understands. Only the fields the runtime needs
-   are emitted — unused options stay in the source map."
-  [interaction]
-  (let [pos (:overlay-position interaction)]
-    (cond-> {:eventType  (some-> (:event-type interaction) name)
-             :actionType (some-> (:action-type interaction) name)}
-      (:destination interaction)        (assoc :destination (str (:destination interaction)))
-      (:delay interaction)              (assoc :delay (:delay interaction))
-      (:preserve-scroll interaction)    (assoc :preserveScroll (boolean (:preserve-scroll interaction)))
-      (:url interaction)                (assoc :url (:url interaction))
-      pos                               (assoc :overlayPosition {:x (:x pos) :y (:y pos)})
-      (:overlay-pos-type interaction)   (assoc :overlayPosType (name (:overlay-pos-type interaction)))
-      (some? (:close-click-outside interaction)) (assoc :closeClickOutside (boolean (:close-click-outside interaction)))
-      (some? (:background-overlay interaction))  (assoc :backgroundOverlay (boolean (:background-overlay interaction)))
-      (:position-relative-to interaction) (assoc :positionRelativeTo (str (:position-relative-to interaction)))
-      (:animation interaction)          (assoc :animation (->js-animation (:animation interaction))))))
-
-(defn- harvest-interactions
-  "Walk every shape on the page and return a map
-   `{shape-id-str → [interaction-payload …]}` for use by the iframe
-   runtime. Shapes without interactions are omitted to keep the map
-   small (the runtime checks for membership before reading)."
-  [page]
-  (->> (vals (:objects page))
-       (keep (fn [shape]
-               (let [xs (:interactions shape)]
-                 (when (seq xs)
-                   [(str (:id shape)) (mapv ->js-interaction xs)]))))
-       (into {})))
+;; NOTE: the pure projection / parsing helpers behind the prototype
+;; controller (interaction harvesting, the postMessage protocol, overlay
+;; geometry, WAAPI keyframe vocabulary) live in
+;; `app.main.data.html-mode.prototype` (aliased `proto`) so they can be
+;; unit-tested without React.
 
 ;; ---------------------------------------------------------------------------
 ;; Prototype board doc cache
@@ -328,7 +285,7 @@
             js-shape   (unchecked-get js-objects (str (:id frame)))
             tokens     (.-tokens ctx)
             tokens-css (when (and tokens (pos? (.-size tokens))) (cv/tokensToCss tokens))
-            ix         (harvest-interactions page)]
+            ix         (proto/harvest-interactions page)]
         (-> (js/Promise.all
              #js [(-> (js/Promise.resolve)
                       (.then (fn [] (cv/convertShape js-shape js-objects ctx)))
@@ -1248,28 +1205,6 @@
      "</html>")))
 
 ;; ---------------------------------------------------------------------------
-;; postMessage bridge
-
-(defn- read-selected
-  "Build the CLJS selected map from an event.data JS object. Returns nil
-   if the payload doesn't look like one of ours."
-  [^js data]
-  (when (and (some? data) (object? data))
-    (let [t (obj/get data "type")]
-      (case t
-        "penpot:html-mode:select"
-        {:id         (obj/get data "id")
-         :shape-type (obj/get data "shapeType")
-         :shape-name (obj/get data "shapeName")
-         :style      (obj/get data "style")
-         :tag        (obj/get data "tag")}
-
-        "penpot:html-mode:deselect"
-        ::deselect
-
-        nil))))
-
-;; ---------------------------------------------------------------------------
 ;; Prototype parent-side controller
 ;;
 ;; The iframe runtime emits `penpot:prototype:trigger` messages. The
@@ -1278,99 +1213,6 @@
 ;; open/toggle/close-overlay maintain a list of mounted overlay
 ;; iframes positioned via `ctsi/calc-overlay-position` (the same math
 ;; the SVG viewer uses); prev-screen pops a nav stack.
-
-(defn- ^:private parse-uuid-safe
-  "Parse a UUID-string or return nil on bad input. Used because the
-   iframe payload only carries strings — Penpot's CLJS API expects
-   real UUIDs for ids."
-  [s]
-  (when (and (string? s) (seq s))
-    (try (uuid/parse s) (catch :default _ nil))))
-
-(defn- js-animation->cljs
-  "Re-hydrate the JS animation payload the runtime returns into the
-   keyword-flavoured CLJS shape the rest of the code expects (matches
-   `app.common.types.shape.interactions/animation-types`)."
-  [^js a]
-  (when a
-    (let [t (obj/get a "type")]
-      (cond-> {:animation-type (keyword t)
-               :duration       (obj/get a "duration")
-               :easing         (some-> (obj/get a "easing") keyword)}
-        (= t "slide")
-        (assoc :way (some-> (obj/get a "way") keyword)
-               :direction (some-> (obj/get a "direction") keyword)
-               :offset-effect (boolean (obj/get a "offsetEffect")))
-        (= t "push")
-        (assoc :direction (some-> (obj/get a "direction") keyword))))))
-
-(defn- js-interaction->cljs
-  "Rebuild a CLJS interaction map matching the Penpot schema from the
-   JS payload the iframe forwarded. UUID-strings are parsed back into
-   uuids and gpt/point is rebuilt so downstream helpers (notably
-   `ctsi/calc-overlay-position`) work without surprise."
-  [^js ix]
-  (let [pos (obj/get ix "overlayPosition")]
-    (cond-> {:event-type  (some-> (obj/get ix "eventType") keyword)
-             :action-type (some-> (obj/get ix "actionType") keyword)}
-      (obj/get ix "destination")
-      (assoc :destination (parse-uuid-safe (obj/get ix "destination")))
-
-      (obj/get ix "delay")
-      (assoc :delay (obj/get ix "delay"))
-
-      (obj/get ix "preserveScroll")
-      (assoc :preserve-scroll (boolean (obj/get ix "preserveScroll")))
-
-      (obj/get ix "url")
-      (assoc :url (obj/get ix "url"))
-
-      pos
-      (assoc :overlay-position (gpt/point (obj/get pos "x") (obj/get pos "y")))
-
-      (obj/get ix "overlayPosType")
-      (assoc :overlay-pos-type (keyword (obj/get ix "overlayPosType")))
-
-      (some? (obj/get ix "closeClickOutside"))
-      (assoc :close-click-outside (boolean (obj/get ix "closeClickOutside")))
-
-      (some? (obj/get ix "backgroundOverlay"))
-      (assoc :background-overlay (boolean (obj/get ix "backgroundOverlay")))
-
-      (obj/get ix "positionRelativeTo")
-      (assoc :position-relative-to (parse-uuid-safe (obj/get ix "positionRelativeTo")))
-
-      (obj/get ix "animation")
-      (assoc :animation (js-animation->cljs (obj/get ix "animation"))))))
-
-(defn- read-prototype-trigger
-  "Recognise a `penpot:prototype:trigger` postMessage payload from the
-   prototype bridge script and return `{:source-id :interaction}` (with
-   `:interaction` rebuilt as a CLJS interaction map), or `nil` if the
-   message isn't one of ours."
-  [^js data]
-  (when (and (some? data) (object? data))
-    (when (= (obj/get data "type") "penpot:prototype:trigger")
-      {:source-id   (obj/get data "sourceId")
-       :interaction (js-interaction->cljs (obj/get data "interaction"))})))
-
-(defn- find-frame-by-id-str
-  "Resolve a frame UUID-string to its shape map by walking the page's
-   `:frames` (the top-level frame index used by viewer pagination)."
-  [page id-str]
-  (some (fn [f] (when (= (str (:id f)) id-str) f)) (:frames page)))
-
-(defn- board-dims
-  "Return `{:width :height}` for a frame in canvas units. Used by the
-   parent JSX to size the `.board-stack` wrapper that isolates the
-   board from the preview pane's surrounding stage background. Falls
-   back to zeros for nil so the JSX can still emit a valid style map
-   (which then renders as nothing — the JSX guards on the wrapping
-   `(when frame ...)` higher up)."
-  [frame]
-  (let [s (:selrect frame)]
-    {:width  (or (:width s) (:width frame) 0)
-     :height (or (:height s) (:height frame) 0)}))
 
 (defn- nav-to-frame-index!
   "Sync the URL `?index=` to the position of `frame-id-str` in the
@@ -1388,86 +1230,6 @@
       (let [params (rt/get-params @st/state)]
         (st/emit! (rt/nav :viewer (assoc params :index idx)))))))
 
-(defn- compute-overlay-rect
-  "Compute the overlay's position and size relative to the base frame
-   (the currently displayed board). Returns `{:x :y :width :height}`
-   in canvas units. Mirrors the viewer's overlay positioning math at
-   `frontend/src/app/main/ui/viewer.cljs:141-212` by delegating to
-   `ctsi/calc-overlay-position`.
-
-   `calc-overlay-position` positions the overlay's *bounds box* — which
-   includes the padding added by shadows / blur / overflowing children
-   (`gsb/get-object-bounds`), NOT the frame's `selrect`. Since we render
-   the iframe at the frame's `selrect` size, we shift the result by the
-   selrect's offset within the bounds box so the visible frame lands
-   exactly where the SVG viewer puts it (the viewer achieves the same
-   alignment via its `calculate-delta`). Without this, an overlay with a
-   shadow is mis-centred by half the shadow padding."
-  [page interaction source-shape base-frame dest-frame]
-  (let [objects          (:objects page)
-        relative-to-id   (:position-relative-to interaction)
-        relative-shape   (cond
-                           (some? relative-to-id) (get objects relative-to-id)
-                           (= :manual (:overlay-pos-type interaction)) base-frame
-                           :else source-shape)
-        [pos _snap]      (ctsi/calc-overlay-position
-                          interaction
-                          source-shape
-                          objects
-                          (or relative-shape base-frame)
-                          base-frame
-                          dest-frame
-                          (gpt/point 0 0))
-        srect            (:selrect dest-frame)
-        bounds           (gsb/get-object-bounds objects dest-frame)
-        off-x            (- (:x srect) (:x bounds))
-        off-y            (- (:y srect) (:y bounds))]
-    {:x      (+ (:x pos) off-x)
-     :y      (+ (:y pos) off-y)
-     :width  (:width srect)
-     :height (:height srect)}))
-
-(defn- easing->css
-  "Project a Penpot easing keyword to its CSS timing-function string."
-  [easing]
-  (case easing
-    :linear      "linear"
-    :ease        "ease"
-    :ease-in     "ease-in"
-    :ease-out    "ease-out"
-    :ease-in-out "ease-in-out"
-    "ease"))
-
-(defn- slide-axis-percent
-  "Translate a Penpot direction keyword into a `transform` for a 100%
-   offset in that direction. `:right` means the destination starts off-
-   screen to the right and slides in to the left; `:left` mirrored;
-   etc. Used by both slide and push animations."
-  [direction]
-  (case direction
-    :right "translateX(100%)"
-    :left  "translateX(-100%)"
-    :up    "translateY(-100%)"
-    :down  "translateY(100%)"
-    "translateX(100%)"))
-
-(defn- slide-keyframes
-  "Build the keyframe pair for the destination iframe in a `:slide` or
-   `:push` animation. Returns `[from-transform, to-transform]`."
-  [direction]
-  [(slide-axis-percent direction) "translate(0,0)"])
-
-(defn- push-from-keyframes
-  "Keyframes for the origin iframe in a `:push` animation: slides out
-   in the OPPOSITE direction of the destination's entry."
-  [direction]
-  ["translate(0,0)"
-   (slide-axis-percent (case direction
-                         :right :left
-                         :left  :right
-                         :up    :down
-                         :down  :up))])
-
 (defn- run-overlay-anim!
   "Play an overlay enter / exit animation on `el` with the Web Animations
    API and return the `Animation` (so callers can await `.finished`), or
@@ -1479,14 +1241,14 @@
   (when (and el animation)
     (let [kind   (:animation-type animation)
           dur    (max 1 (or (:duration animation) 300))
-          easing (easing->css (:easing animation))
+          easing (proto/easing->css (:easing animation))
           opts   #js {:duration dur :easing easing :fill "both"}
           frames (case kind
                    :dissolve (if exit? [{:opacity 1} {:opacity 0}] [{:opacity 0} {:opacity 1}])
                    :slide    (let [dir (if exit?
                                          (:direction (ctsi/invert-direction animation))
                                          (:direction animation))
-                                   off (slide-axis-percent dir)]
+                                   off (proto/slide-axis-percent dir)]
                                (if exit?
                                  [{:transform "translate(0,0)"} {:transform off}]
                                  [{:transform off} {:transform "translate(0,0)"}]))
@@ -1753,17 +1515,17 @@
         (mf/use-fn
          (mf/deps file page)
          (fn [^js msg]
-           (when-let [{:keys [source-id interaction]} (read-prototype-trigger msg)]
+           (when-let [{:keys [source-id interaction]} (proto/read-prototype-trigger msg)]
              (let [action       (:action-type interaction)
                    ps           (mf/ref-val proto-live*)
                    base-id      (:current-frame-id ps)
-                   base-frame   (when base-id (find-frame-by-id-str page base-id))
-                   source-uuid  (parse-uuid-safe source-id)
+                   base-frame   (when base-id (proto/find-frame-by-id-str page base-id))
+                   source-uuid  (uuid/parse* source-id)
                    source-shape (when source-uuid (get (:objects page) source-uuid))]
                (case action
                  :navigate
                  (when-let [dest-id (some-> (:destination interaction) str)]
-                   (when-let [dest-frame (find-frame-by-id-str page dest-id)]
+                   (when-let [dest-frame (proto/find-frame-by-id-str page dest-id)]
                      (-> (render-board-html file page dest-frame)
                          (.then (fn [parts]
                                   (let [doc (build-prototype-document parts page dest-frame {:transparent-bg? true})
@@ -1810,13 +1572,13 @@
                        ;; plays the exit animation before it's removed.
                        (swap! proto-state* update :overlays
                               (fn [xs] (mapv (fn [o] (if (= (:id o) dest-id) (assoc o :closing? true) o)) xs)))
-                       (let [dest-frame (or (find-frame-by-id-str page dest-id)
-                                            (get-in page [:objects (parse-uuid-safe dest-id)]))]
+                       (let [dest-frame (or (proto/find-frame-by-id-str page dest-id)
+                                            (get-in page [:objects (uuid/parse* dest-id)]))]
                          (when (and dest-frame base-frame source-shape)
                            (-> (render-board-html file page dest-frame)
                                (.then (fn [parts]
                                         (let [doc (build-prototype-document parts page dest-frame {:transparent-bg? true})
-                                              rect (compute-overlay-rect page interaction
+                                              rect (proto/compute-overlay-rect page interaction
                                                                          source-shape base-frame
                                                                          dest-frame)]
                                           (swap! proto-state* update :overlays conj
@@ -1848,7 +1610,7 @@
                  (let [stack (:nav-stack ps)
                        prev  (peek stack)]
                    (when prev
-                     (when-let [prev-frame (find-frame-by-id-str page prev)]
+                     (when-let [prev-frame (proto/find-frame-by-id-str page prev)]
                        (-> (render-board-html file page prev-frame)
                            (.then (fn [parts]
                                     (let [doc (build-prototype-document parts page prev-frame {:transparent-bg? true})]
@@ -1936,7 +1698,7 @@
           (reset! state* {:status :design-tokens :html nil :error nil :updated-at nil})
 
           (= mode :prototype)
-          (let [fr    (or (find-frame-by-id-str page current-frame-id) frame)
+          (let [fr    (or (proto/find-frame-by-id-str page current-frame-id) frame)
                 fr-id (some-> fr :id str)]
             (cond
               (nil? fr)
@@ -1988,9 +1750,9 @@
     (mf/with-effect []
       (let [handler (fn [^js e]
                       (let [data (.-data e)
-                            result (read-selected data)]
+                            result (proto/read-selected data)]
                         (cond
-                          (= result ::deselect) (reset! selected* nil)
+                          (= result ::proto/deselect) (reset! selected* nil)
                           (some? result)        (reset! selected* result)
                           :else                 (dispatch-prototype-trigger data))))]
         (.addEventListener js/window "message" handler)
@@ -2012,7 +1774,7 @@
               anim    (:animation transition)
               kind    (:animation-type anim)
               dur     (max 1 (or (:duration anim) 300))
-              easing  (easing->css (:easing anim))
+              easing  (proto/easing->css (:easing anim))
               opts    #js {:duration dur :easing easing :fill "both"}
               raf     (volatile! nil)
               promises (volatile! [])
@@ -2073,17 +1835,17 @@
                               :dissolve (animate! from-el [{:opacity 1} {:opacity 0}])
                               :slide    (when (= :out (:way anim))
                                           (animate! from-el [{:transform "translate(0,0)"}
-                                                             {:transform (slide-axis-percent (:direction anim))}]))
-                              :push     (let [[a b] (push-from-keyframes (:direction anim))]
+                                                             {:transform (proto/slide-axis-percent (:direction anim))}]))
+                              :push     (let [[a b] (proto/push-from-keyframes (:direction anim))]
                                           (animate! from-el [{:transform a} {:transform b}]))
                               nil)
                             to-anim
                             (case kind
                               :dissolve (animate! to-el [{:opacity 0} {:opacity 1}])
                               :slide    (when (not= :out (:way anim))
-                                          (let [[a b] (slide-keyframes (:direction anim))]
+                                          (let [[a b] (proto/slide-keyframes (:direction anim))]
                                             (animate! to-el [{:transform a} {:transform b}])))
-                              :push     (let [[a b] (slide-keyframes (:direction anim))]
+                              :push     (let [[a b] (proto/slide-keyframes (:direction anim))]
                                           (animate! to-el [{:transform a} {:transform b}]))
                               nil)
                             ps (cond-> []
@@ -2238,7 +2000,7 @@
        (when (= mode :prototype)
          [:> device-view-controls*
           {:settings device-view
-           :default-dims (board-dims (or (find-frame-by-id-str page current-frame-id) frame))
+           :default-dims (proto/board-dims (or (proto/find-frame-by-id-str page current-frame-id) frame))
            :on-change on-device-view-change}])]
 
       (cond
@@ -2313,9 +2075,9 @@
              ;; without remounting. The browser never reloads the
              ;; iframe's srcDoc, eliminating the post-animation
              ;; flicker that earlier versions had.
-             (let [proto-frame    (or (find-frame-by-id-str page current-frame-id) frame)
-                   from-frame     (when transition (find-frame-by-id-str page (:from-id transition)))
-                   to-frame       (when transition (find-frame-by-id-str page (:to-id transition)))
+             (let [proto-frame    (or (proto/find-frame-by-id-str page current-frame-id) frame)
+                   from-frame     (when transition (proto/find-frame-by-id-str page (:from-id transition)))
+                   to-frame       (when transition (proto/find-frame-by-id-str page (:to-id transition)))
                    ;; Device-view size override: when the user picks a preset
                    ;; or types a custom size, the board-stack uses those dims
                    ;; instead of the board's design size. The iframe content
@@ -2325,9 +2087,9 @@
                    ;; from- nor the to-board gets clipped mid-slide; the stack
                    ;; snaps back to the override once the transition commits.
                    override       (:size-override device-view)
-                   {pw :width ph :height} (or override (board-dims proto-frame))
-                   {fw :width fh :height} (board-dims (or from-frame proto-frame))
-                   {tw :width th :height} (board-dims (or to-frame proto-frame))
+                   {pw :width ph :height} (or override (proto/board-dims proto-frame))
+                   {fw :width fh :height} (proto/board-dims (or from-frame proto-frame))
+                   {tw :width th :height} (proto/board-dims (or to-frame proto-frame))
                    stack-w        (if transition (max fw tw) pw)
                    stack-h        (if transition (max fh th) ph)
                    layers         (if transition

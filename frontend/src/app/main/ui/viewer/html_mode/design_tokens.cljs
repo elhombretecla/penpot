@@ -376,7 +376,7 @@
   (case shape-type
     "frame"   i/board
     "rect"    i/rectangle
-    "circle"  i/elipse
+    "circle"  i/ellipse
     "path"    i/path
     "text"    i/text
     "image"   i/img

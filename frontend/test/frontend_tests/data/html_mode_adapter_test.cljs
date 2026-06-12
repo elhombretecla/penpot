@@ -221,7 +221,9 @@
     (t/is (= "Page 1" (obj/get out "name")))
     (t/is (= "#ffffff" (js-get out "options" "background")))
     (let [objects (obj/get out "objects")]
-      (t/is (= [(str rect-id) (str root-id)] (js-keys objects)))
+      ;; `js-keys` returns the keys SORTED (uuid/custom 5 1 sorts
+      ;; before 5 2), so the expectation must be sorted too.
+      (t/is (= (sort [(str rect-id) (str root-id)]) (js-keys objects)))
       (t/is (= "frame" (js-get objects (str root-id) "type")))
       (t/is (= "rect"  (js-get objects (str rect-id) "type")))
       ;; parent-id reference is stringified
