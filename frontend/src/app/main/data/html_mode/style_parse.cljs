@@ -20,15 +20,55 @@
 ;; ---------------------------------------------------------------------------
 ;; Declaration parsing
 
+(defn- split-declarations
+  "Split an inline style string on the `;` separators that sit at the
+   TOP LEVEL — outside parentheses and outside single/double-quoted
+   strings. A naive `(str/split s \";\")` corrupts values like
+   `url(data:image/svg+xml;base64,…)` or `content: \"a;b\"`. Inside a
+   quoted string a backslash escapes the next character, per CSS
+   string syntax."
+  [s]
+  (let [n (count s)]
+    (loop [i 0 start 0 depth 0 quote nil escaped? false out (transient [])]
+      (if (>= i n)
+        (persistent! (conj! out (subs s start)))
+        (let [ch (.charAt ^string s i)]
+          (cond
+            escaped?
+            (recur (inc i) start depth quote false out)
+
+            (some? quote)
+            (cond
+              (= ch "\\") (recur (inc i) start depth quote true out)
+              (= ch quote) (recur (inc i) start depth nil false out)
+              :else (recur (inc i) start depth quote false out))
+
+            (or (= ch "\"") (= ch "'"))
+            (recur (inc i) start depth ch false out)
+
+            (= ch "(")
+            (recur (inc i) start (inc depth) nil false out)
+
+            (= ch ")")
+            (recur (inc i) start (max 0 (dec depth)) nil false out)
+
+            (and (= ch ";") (zero? depth))
+            (recur (inc i) (inc i) depth nil false (conj! out (subs s start i)))
+
+            :else
+            (recur (inc i) start depth nil false out)))))))
+
 (defn parse-declarations
   "Split an inline `style=\"…\"` value into ordered [prop value] pairs.
-   Trims whitespace and silently drops malformed entries. Only the
-   first `:` in a declaration is treated as the prop/value separator
-   so values containing `:` (like `url(http://…)`) survive intact."
+   Trims whitespace and silently drops malformed entries. Splitting is
+   paren- and quote-aware (see `split-declarations`), and only the
+   first `:` in a declaration is treated as the prop/value separator —
+   so values containing `;` or `:` (like `url(data:…;base64,…)`)
+   survive intact."
   [style-str]
   (if (or (nil? style-str) (str/blank? style-str))
     []
-    (->> (str/split style-str ";")
+    (->> (split-declarations style-str)
          (map str/trim)
          (remove str/empty?)
          (mapv (fn [decl]

@@ -37,6 +37,35 @@
            (sp/parse-declarations
             "box-shadow: 0 1px 2px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1);"))))
 
+(t/deftest preserves-semicolons-inside-parentheses
+  ;; Data URIs carry `;` inside `url(...)` — the splitter must not cut
+  ;; the value there.
+  (t/is (= [["background-image" "url(data:image/svg+xml;base64,PHN2Zz4=)"]
+            ["color" "#ffffff"]]
+           (sp/parse-declarations
+            "background-image: url(data:image/svg+xml;base64,PHN2Zz4=); color: #ffffff;"))))
+
+(t/deftest preserves-semicolons-inside-quoted-strings
+  (t/is (= [["content" "\"a;b\""]
+            ["color" "red"]]
+           (sp/parse-declarations "content: \"a;b\"; color: red;")))
+  (t/is (= [["content" "'x;y'"]
+            ["width" "1px"]]
+           (sp/parse-declarations "content: 'x;y'; width: 1px;"))))
+
+(t/deftest quoted-string-escapes-do-not-terminate-the-string
+  ;; A backslash-escaped quote inside the string must not end it — the
+  ;; following `;` is still part of the value.
+  (t/is (= [["content" "\"a\\\";b\""]
+            ["color" "red"]]
+           (sp/parse-declarations "content: \"a\\\";b\"; color: red;"))))
+
+(t/deftest unbalanced-parens-do-not-swallow-the-rest
+  ;; A stray `)` must not push depth negative and break later splits.
+  (t/is (= [["x" "a)b"]
+            ["color" "red"]]
+           (sp/parse-declarations "x: a)b; color: red;"))))
+
 (t/deftest empty-and-nil-input
   (t/is (= [] (sp/parse-declarations nil)))
   (t/is (= [] (sp/parse-declarations "")))
