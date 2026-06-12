@@ -31,6 +31,7 @@
    [frontend-tests.plugins.parser-test]
    [frontend-tests.plugins.tokens-test]
    [frontend-tests.plugins.utils-test]
+   [frontend-tests.render-wasm.process-objects-test]
    [frontend-tests.svg-fills-test]
    [frontend-tests.tokens.import-export-test]
    [frontend-tests.tokens.logic.token-actions-test]
@@ -91,6 +92,7 @@
     frontend-tests.tokens.token-errors-test
     frontend-tests.tokens.workspace-tokens-remap-test
     frontend-tests.ui.ds-controls-numeric-input-test
+    frontend-tests.render-wasm.process-objects-test
     frontend-tests.util-object-test
     frontend-tests.util-range-tree-test
     frontend-tests.util-simple-math-test

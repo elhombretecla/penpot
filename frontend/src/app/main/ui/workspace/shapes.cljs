@@ -2,7 +2,7 @@
 ;; License, v. 2.0. If a copy of the MPL was not distributed with this
 ;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ;;
-;; Copyright (c) KALEIDOS INC
+;; Copyright (c) KALEIDOS INC Sucursal en España SL
 
 (ns app.main.ui.workspace.shapes
   "A workspace specific shapes wrappers.
@@ -87,7 +87,7 @@
        (for [shape shapes]
          (let [thumbnail?
                (and (not disable-thumbnails)
-                    (contains? active-frames (dm/get-prop shape :id)))]
+                    (not (contains? active-frames (dm/get-prop shape :id))))]
            [:g.ws-shape-wrapper {:key (dm/str (dm/get-prop shape :id))}
             (if ^boolean (cfh/frame-shape? shape)
               [:& root-frame-wrapper

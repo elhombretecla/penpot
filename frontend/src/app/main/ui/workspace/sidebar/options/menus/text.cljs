@@ -2,7 +2,7 @@
 ;; License, v. 2.0. If a copy of the MPL was not distributed with this
 ;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ;;
-;; Copyright (c) KALEIDOS INC
+;; Copyright (c) KALEIDOS INC Sucursal en España SL
 
 (ns app.main.ui.workspace.sidebar.options.menus.text
   (:require-macros [app.main.style :as stl])
@@ -30,7 +30,7 @@
    [app.main.ui.ds.foundations.assets.icon :as i]
    [app.main.ui.hooks :as hooks]
    [app.main.ui.workspace.sidebar.options.menus.token-typography-row :refer [token-typography-row*]]
-   [app.main.ui.workspace.sidebar.options.menus.typography :refer [text-options* typography-entry]]
+   [app.main.ui.workspace.sidebar.options.menus.typography :refer [text-options* typography-entry*]]
    [app.main.ui.workspace.tokens.management.forms.controls.utils :as csu]
    [app.util.dom :as dom]
    [app.util.i18n :as i18n :refer [tr]]
@@ -516,11 +516,11 @@
                              :icon       i/detach}]]
 
           typography
-          [:& typography-entry {:file-id    typography-file-id
-                                :typography typography
-                                :local?     (= typography-file-id file-id)
-                                :on-detach  handle-detach-typography
-                                :on-change  handle-change-typography}]
+          [:> typography-entry* {:file-id    typography-file-id
+                                 :typography typography
+                                 :is-local   (= typography-file-id file-id)
+                                 :on-detach  handle-detach-typography
+                                 :on-change  handle-change-typography}]
 
 
 

@@ -2,7 +2,7 @@
 ;; License, v. 2.0. If a copy of the MPL was not distributed with this
 ;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ;;
-;; Copyright (c) KALEIDOS INC
+;; Copyright (c) KALEIDOS INC Sucursal en España SL
 
 (ns app.main.ui.static
   (:require-macros [app.main.style :as stl])
@@ -229,8 +229,7 @@
          (mf/deps profile)
          (fn []
            (let [team-id (:default-team-id profile)]
-             (st/emit! (rt/assign-exception nil)
-                       (dcm/go-to-dashboard-recent :team-id team-id)))))
+             (st/emit! (dcm/go-to-dashboard-recent :team-id team-id)))))
 
         on-success
         (mf/use-fn

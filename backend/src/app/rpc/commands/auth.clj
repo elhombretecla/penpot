@@ -2,7 +2,7 @@
 ;; License, v. 2.0. If a copy of the MPL was not distributed with this
 ;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ;;
-;; Copyright (c) KALEIDOS INC
+;; Copyright (c) KALEIDOS INC Sucursal en España SL
 
 (ns app.rpc.commands.auth
   (:require
@@ -544,6 +544,12 @@
                   {::audit/replace-props props
                    ::audit/context {:action "email-verification"}
                    ::audit/profile-id (:id profile)})))))
+
+      ;; When email verification is disabled and an inactive profile already
+      ;; exists, reject the registration — the email is already taken.
+      (not (contains? cf/flags :email-verification))
+      (ex/raise :type :validation
+                :code :email-already-exists)
 
       :else
       (let [elapsed? (elapsed-verify-threshold? profile)

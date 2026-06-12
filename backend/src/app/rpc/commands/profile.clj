@@ -2,7 +2,7 @@
 ;; License, v. 2.0. If a copy of the MPL was not distributed with this
 ;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ;;
-;; Copyright (c) KALEIDOS INC
+;; Copyright (c) KALEIDOS INC Sucursal en España SL
 
 (ns app.rpc.commands.profile
   (:require
@@ -537,7 +537,10 @@
    [:name ::sm/text]
    [:slug ::sm/text]
    [:team-count ::sm/int]
-   [:member-count ::sm/int]])
+   [:member-count ::sm/int]
+   [:avatar-bg-url {:optional true} [:maybe ::sm/uri]]
+   [:logo-id {:optional true} [:maybe ::sm/uuid]]
+   [:custom-photo {:optional true} [:maybe ::sm/text]]])
 
 (def ^:private schema:get-owned-organizations-summary-result
   [:vector schema:owned-organization-summary])
