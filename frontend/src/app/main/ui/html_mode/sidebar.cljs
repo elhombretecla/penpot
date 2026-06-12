@@ -4,7 +4,7 @@
 ;;
 ;; Copyright (c) KALEIDOS INC
 
-(ns app.main.ui.viewer.html-mode.sidebar
+(ns app.main.ui.html-mode.sidebar
   "Dev sidebar for HTML Mode.
 
    Renders the CSS declarations, applied tokens, and asset references
@@ -30,12 +30,12 @@
    [app.main.data.exports.assets :as de]
    [app.main.data.html-mode.style-parse :as sp]
    [app.main.data.modal :as modal]
-   [app.main.refs :as refs]
    [app.main.render :as render]
    [app.main.store :as st]
    [app.main.ui.components.dropdown :refer [dropdown]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :refer [icon*] :as i]
+   [app.main.ui.html-mode.refs :as hrefs]
    [app.main.ui.inspect.attributes.common :as cmm]
    [app.util.clipboard :as clipboard]
    [app.util.dom :as dom]
@@ -381,7 +381,7 @@
   ;; happened inside a `when` / `cond` branch React would render a
   ;; different number of hooks on toggling the branch and throw
   ;; "Rendered fewer hooks than expected".
-  (let [vdata      (mf/deref refs/viewer-data)
+  (let [vdata      (mf/deref hrefs/html-mode-data)
         libraries  (libraries-from-viewer-data vdata)
         local-data (get-in vdata [:file :data])
         info       (component-info shape libraries page local-data)]
@@ -635,7 +635,7 @@
 ;; surface the design mock describes: format toggle (HTML/JSX), styling
 ;; toggle (CSS/Tailwind), include-data-attrs checkbox, and live code
 ;; blocks the user can copy to the clipboard. Live code generation
-;; lives in `app.main.ui.viewer.html-mode.export-modal`.
+;; lives in `app.main.ui.html-mode.export-modal`.
 
 (mf/defc export-button*
   [{:keys [shape page file]}]

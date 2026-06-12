@@ -10,6 +10,7 @@
    [app.common.uuid :as uuid]
    [app.config :as cf]
    [app.main.data.common :as dcm]
+   [app.main.data.html-mode :as dhtml]
    [app.main.data.nitrate :as dnt]
    [app.main.data.team :as dtm]
    [app.main.errors :as errors]
@@ -45,6 +46,23 @@
 
 (def viewer-page*
   (mf/lazy #(mod/load 'app.main.ui.viewer/viewer-page*)))
+
+(def html-mode-page*
+  (mf/lazy #(mod/load 'app.main.ui.html-mode/html-mode-page*)))
+
+(mf/defc html-mode-redirect*
+  "LEGACY redirect shim: HTML Mode used to live as a viewer section
+   (`/view?section=html&mode=…&index=…`). Maps the old query params
+   1:1 onto the standalone `:html-mode` route. Remove after one
+   release."
+  {::mf/private true}
+  [{:keys [params]}]
+  (mf/with-effect []
+    (let [params (-> params
+                     (dissoc :section :interactions-mode :share))]
+      (st/emit! (rt/nav :html-mode params ::rt/replace true))))
+  [:> loader* {:title (tr "labels.loading")
+               :overlay true}])
 
 (def dashboard-page*
   (mf/lazy #(mod/load 'app.main.ui.dashboard/dashboard-page*)))
@@ -296,27 +314,41 @@
              imode    (or (some-> (:interactions-mode params) keyword)
                           :show-on-click)
              frame-id (some-> (:frame-id params) uuid/parse*)
-             share    (:share params)
-             ;; HTML-Mode-specific: which of the sub-views to show —
-             ;; `workspace` (default), `prototype`, `design-tokens` or
-             ;; `components`. Lives in the URL so the mode is shareable.
-             html-mode (case (:mode params)
-                         "prototype"     :prototype
-                         "design-tokens" :design-tokens
-                         "components"    :components
-                         :workspace)]
+             share    (:share params)]
 
+         (if (= section :html)
+           ;; LEGACY redirect: HTML Mode used to live as a viewer
+           ;; section (`?section=html`). It is a standalone route now;
+           ;; map the old params 1:1 (the new page still understands
+           ;; the `index` board fallback). Remove after one release.
+           [:> html-mode-redirect* {:params params}]
+           [:? {}
+            [:> viewer-page*
+             {:page-id page-id
+              :file-id file-id
+              :frame-id frame-id
+              :section section
+              :index index
+              :share-id share-id
+              :interactions-mode imode
+              :share share}]]))
+
+       :html-mode
+       (let [params   (get params :query)
+             file-id  (some-> (:file-id params) uuid/parse*)
+             page-id  (some-> (:page-id params) uuid/parse*)
+             frame-id (some-> (:frame-id params) uuid/parse*)
+             share-id (some-> (:share-id params) uuid/parse*)
+             index    (some-> (rt/get-query-param params :index) parse-long)
+             mode     (dhtml/parse-mode (:mode params))]
          [:? {}
-          [:> viewer-page*
-           {:page-id page-id
-            :file-id file-id
+          [:> html-mode-page*
+           {:file-id file-id
+            :page-id page-id
             :frame-id frame-id
-            :section section
-            :index index
             :share-id share-id
-            :interactions-mode imode
-            :html-mode html-mode
-            :share share}]])
+            :index index
+            :mode mode}]])
 
 
        :workspace-legacy

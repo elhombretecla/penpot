@@ -38,6 +38,10 @@
     {:entries [app.main.ui.viewer]
      :depends-on #{:shared :main-auth}}
 
+    :main-html-mode
+    {:entries [app.main.ui.html-mode]
+     :depends-on #{:shared}}
+
     :main-workspace
     {:entries [app.main.ui.workspace]
      :depends-on #{:shared}}

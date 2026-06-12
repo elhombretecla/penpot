@@ -8,8 +8,8 @@
   "Shared builders for the JS context that
    `@penpot/html-converter` and its `shape-code` companion consume.
 
-   Both the live HTML Mode renderer (`app.main.ui.viewer.html-mode`)
-   and the Export modal (`app.main.ui.viewer.html-mode.export-modal`)
+   Both the live HTML Mode renderer (`app.main.ui.html-mode`)
+   and the Export modal (`app.main.ui.html-mode.export-modal`)
    need the same ctx — file typographies, applied tokens, and image-
    url resolution. Keeping it here avoids a circular require between
    the renderer module and the modal."

@@ -49,6 +49,10 @@
 
    ["/view/:file-id" :viewer-legacy]
 
+   ;; HTML Mode: standalone read-only mode that renders pages as real
+   ;; HTML (gated by the `html-mode` flag at the page level).
+   ["/html" :html-mode]
+
    (when *assert*
      ["/debug/icons-preview" :debug-icons-preview])
 

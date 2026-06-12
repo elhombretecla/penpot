@@ -4,7 +4,7 @@
 ;;
 ;; Copyright (c) KALEIDOS INC
 
-(ns app.main.ui.viewer.html-mode.components
+(ns app.main.ui.html-mode.components
   "Storybook-like browser for the components used on the current page.
 
    Sidebar groups components by their assets path; the detail pane
@@ -30,9 +30,9 @@
    [app.main.ui.components.search-bar :refer [search-bar*]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :refer [icon*] :as i]
-   [app.main.ui.viewer.html-mode.design-tokens :as dt]
-   [app.main.ui.viewer.html-mode.preview-doc :as pdoc]
-   [app.main.ui.viewer.html-mode.sidebar :refer [format-picker* section-disclosure*]]
+   [app.main.ui.html-mode.design-tokens :as dt]
+   [app.main.ui.html-mode.preview-doc :as pdoc]
+   [app.main.ui.html-mode.sidebar :refer [format-picker* section-disclosure*]]
    [app.util.clipboard :as clipboard]
    [app.util.code-beautify :as cb]
    [app.util.i18n :refer [tr]]

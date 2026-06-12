@@ -8,13 +8,10 @@
   (:require
    [app.common.data :as d]
    [app.common.data.macros :as dm]
-   [app.common.features :as cfeat]
    [app.common.files.changes :as cpc]
    [app.common.files.helpers :as cfh]
    [app.common.geom.point :as gpt]
    [app.common.schema :as sm]
-   [app.common.transit :as t]
-   [app.common.types.shape-tree :as ctt]
    [app.common.types.shape.interactions :as ctsi]
    [app.common.uuid :as uuid]
    [app.config :as cf]
@@ -23,6 +20,7 @@
    [app.main.data.event :as ev]
    [app.main.data.fonts :as df]
    [app.main.data.helpers :as dsh]
+   [app.main.data.view-bundle :as dvb]
    [app.main.features :as features]
    [app.main.repo :as rp]
    [app.main.router :as rt]
@@ -123,53 +121,16 @@
   (ptk/reify ::fetch-bundle
     ptk/WatchEvent
     (watch [_ _ _]
-      (let [;; NOTE: in viewer we don't have access to the team when
-            ;; user is not logged-in, so we can't know which features
-            ;; are active from team, so in this case it is necesary
-            ;; report the whole set of supported features instead of
-            ;; the enabled ones.
-            features cfeat/supported-features
-            params'  (cond-> {:file-id file-id :features features}
-                       (uuid? share-id)
-                       (assoc :share-id share-id))
-
-            resolve  (fn [[key pointer]]
-                       (let [params {:file-id file-id :fragment-id @pointer}
-                             params (cond-> params
-                                      (uuid? share-id)
-                                      (assoc :share-id share-id))]
-                         (->> (rp/cmd! :get-file-fragment params)
-                              (rx/map :data)
-                              (rx/map #(vector key %)))))]
-
-        (->> (rp/cmd! :get-view-only-bundle params')
-             (rx/mapcat
-              (fn [bundle]
-                (->> (rx/from (-> bundle :file :data :pages-index seq))
-                     (rx/merge-map
-                      (fn [[_ page :as kp]]
-                        (if (t/pointer? page)
-                          (resolve kp)
-                          (rx/of kp))))
-                     (rx/reduce conj {})
-                     (rx/map (fn [pages-index]
-                               (update-in bundle [:file :data] assoc :pages-index pages-index))))))
-             (rx/mapcat
-              (fn [bundle]
-                (->> (rx/from (-> bundle :file :data seq))
-                     (rx/merge-map
-                      (fn [[_ object :as kp]]
-                        (if (t/pointer? object)
-                          (resolve kp)
-                          (rx/of kp))))
-                     (rx/reduce conj {})
-                     (rx/map (fn [data]
-                               (update bundle :file assoc :data data))))))
-             (rx/mapcat
-              (fn [{:keys [fonts team] :as bundle}]
-                (rx/of (df/fonts-fetched fonts)
-                       (features/initialize (:features team))
-                       (bundle-fetched (merge bundle params))))))))))
+      ;; The RPC call + transit-pointer fragment resolution lives in
+      ;; `app.main.data.view-bundle` so it can be shared with other
+      ;; read-only modes (HTML Mode) without duplicating the subtle
+      ;; pointer-resolution logic.
+      (->> (dvb/fetch {:file-id file-id :share-id share-id})
+           (rx/mapcat
+            (fn [{:keys [fonts team] :as bundle}]
+              (rx/of (df/fonts-fetched fonts)
+                     (features/initialize (:features team))
+                     (bundle-fetched (merge bundle params)))))))))
 
 (declare go-to-frame)
 (declare go-to-frame-by-index)
@@ -185,14 +146,7 @@
       (let [file (-> (dm/get-in state [:viewer :file])
                      (update :data cpc/process-changes changes false))
 
-            pages
-            (->> (dm/get-in file [:data :pages])
-                 (map (fn [page-id]
-                        (let [data (get-in file [:data :pages-index page-id])]
-                          [page-id (assoc data
-                                          :frames (ctt/get-viewer-frames (:objects data))
-                                          :all-frames (ctt/get-viewer-frames (:objects data) {:all-frames? true}))])))
-                 (into {}))]
+            pages (dvb/decorate-pages file)]
 
         (-> state
             (assoc-in [:viewer :file] file)
@@ -260,13 +214,7 @@
 
 (defn bundle-fetched
   [{:keys [project file team share-links libraries users permissions thumbnails] :as bundle}]
-  (let [pages (->> (dm/get-in file [:data :pages])
-                   (map (fn [page-id]
-                          (let [data (get-in file [:data :pages-index page-id])]
-                            [page-id (assoc data
-                                            :frames (ctt/get-viewer-frames (:objects data))
-                                            :all-frames (ctt/get-viewer-frames (:objects data) {:all-frames? true}))])))
-                   (into {}))]
+  (let [pages (dvb/decorate-pages file)]
 
     (ptk/reify ::bundle-fetched
       ptk/UpdateEvent

@@ -8,7 +8,6 @@
   (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data.macros :as dm]
-   [app.config :as cf]
    [app.main.data.modal :as modal]
    [app.main.data.shortcuts :as scd]
    [app.main.data.viewer :as dv]
@@ -209,7 +208,7 @@
                :class (stl/css :go-log-btn)} (tr "labels.log-or-sign")])]))
 
 (mf/defc header-sitemap
-  [{:keys [project file page frame toggle-thumbnails section html-mode] :as props}]
+  [{:keys [project file page frame toggle-thumbnails] :as props}]
   (let [project-name   (:name project)
         file-name      (:name file)
         page-name      (:name page)
@@ -236,17 +235,8 @@
     [:div {:class (stl/css :sitemap-zone)
            :title (tr "viewer.header.sitemap")}
      [:span {:class (stl/css :project-name)} project-name]
-     (let [;; HTML Mode views that navigate per page (no frame
-           ;; picker): the workspace inspector and the design-tokens
-           ;; inventory. Both promote the page name to the brighter
-           ;; foreground colour and hide the frame thumbnails dropdown.
-           page-only? (and (= section :html)
-                           (or (= html-mode :workspace)
-                               (= html-mode :design-tokens)))]
      [:div {:class (stl/css :sitemap-text)}
-      [:div {:class (stl/css-case
-                     :breadcrumb true
-                     :breadcrumb-html-workspace page-only?)
+      [:div {:class (stl/css :breadcrumb)
              :on-click open-dropdown}
        [:span  {:class (stl/css :breadcrumb-text)}
         (dm/str file-name " / " page-name)]
@@ -265,24 +255,18 @@
              (get-in file [:data :pages-index id :name])]
             (when (= page-id id)
               [:span {:class (stl/css :icon-check)} deprecated-icon/tick])])]]]
-      ;; In HTML Mode's workspace and design-tokens views the user
-      ;; navigates by page, not by frame — the breadcrumb shouldn't
-      ;; expose the frame thumbnails picker in either. Prototype mode
-      ;; keeps it (the user needs to switch boards). Every other
-      ;; viewer section keeps the existing UX too.
-      (when-not page-only?
-        [:div {:class (stl/css :current-frame)
-               :id "current-frame"
-               :on-click toggle-thumbnails}
-         [:span {:class (stl/css :frame-name)} frame-name]
-         [:span {:class (stl/css :icon)} deprecated-icon/arrow]])])]))
+      [:div {:class (stl/css :current-frame)
+             :id "current-frame"
+             :on-click toggle-thumbnails}
+       [:span {:class (stl/css :frame-name)} frame-name]
+       [:span {:class (stl/css :icon)} deprecated-icon/arrow]]]]))
 
 (def ^:private penpot-logo-icon
   (deprecated-icon/icon-xref :penpot-logo-icon (stl/css :logo-icon)))
 
 
 (mf/defc header
-  [{:keys [project file page frame zoom section html-mode permissions index interactions-mode shown-thumbnails share]}]
+  [{:keys [project file page frame zoom section permissions index interactions-mode shown-thumbnails share]}]
   (let [go-to-dashboard
         (mf/use-fn
          #(st/emit! (dv/go-to-dashboard)))
@@ -337,8 +321,6 @@
                           :file file
                           :page page
                           :frame frame
-                          :section section
-                          :html-mode html-mode
                           :toggle-thumbnails toggle-thumbnails
                           :index index}]]
 
@@ -366,19 +348,6 @@
                   :class (stl/css-case :mode-zone-btn true
                                        :selected (= section :inspect))
                   :title (tr "viewer.header.inspect-section" (sc/get-tooltip :open-inspect))}
-         deprecated-icon/code])
-
-      (when (and (contains? cf/flags :html-mode)
-                 (or (:in-team permissions)
-                     (and (= (:type permissions) :share-link)
-                          (= (:who-inspect permissions) "all"))))
-        [:button {:on-click navigate
-                  :data-value "html"
-                  :class (stl/css-case :mode-zone-btn true
-                                       :selected (= section :html))
-                  :title (tr "viewer.header.html-section")
-                  :aria-label (tr "viewer.header.html-section")
-                  :aria-pressed (= section :html)}
          deprecated-icon/code])]
 
      [:& header-options {:section section

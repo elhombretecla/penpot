@@ -6238,10 +6238,6 @@ msgstr "Edit in workspace"
 msgid "viewer.header.fullscreen"
 msgstr "Full Screen"
 
-#: src/app/main/ui/viewer/header.cljs:357
-msgid "viewer.header.html-section"
-msgstr "HTML mode"
-
 #: src/app/main/ui/viewer/header.cljs:350
 msgid "viewer.header.inspect-section"
 msgstr "Inspect (%s)"
@@ -6493,6 +6489,14 @@ msgstr "Refresh"
 #: src/app/main/ui/viewer/html_mode.cljs
 msgid "viewer.html-mode.toolbar.workspace"
 msgstr "Workspace"
+
+#: src/app/main/ui/html_mode/header.cljs
+msgid "viewer.html-mode.header.open-workspace"
+msgstr "Open in Workspace"
+
+#: src/app/main/ui/html_mode/header.cljs
+msgid "viewer.html-mode.header.board"
+msgstr "Board"
 
 #: src/app/main/ui/viewer/html_mode.cljs
 msgid "viewer.html-mode.toolbar.updated-at"

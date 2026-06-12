@@ -4,7 +4,7 @@
 ;;
 ;; Copyright (c) KALEIDOS INC
 
-(ns app.main.ui.viewer.html-mode.design-tokens
+(ns app.main.ui.html-mode.design-tokens
   "Design Tokens inventory for HTML Mode.
 
    Lists every design token applied on the page (via `appliedTokens` on
@@ -42,8 +42,8 @@
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :refer [icon*] :as i]
    [app.main.ui.ds.layout.tab-switcher :refer [tab-switcher*]]
-   [app.main.ui.viewer.html-mode.preview-doc :as pdoc]
-   [app.main.ui.viewer.html-mode.sidebar :refer [format-picker*]]
+   [app.main.ui.html-mode.preview-doc :as pdoc]
+   [app.main.ui.html-mode.sidebar :refer [format-picker*]]
    [app.util.dom :as dom]
    ;; Side-effecting require: the `:tokens/export` modal registers
    ;; itself when this namespace is loaded. Pulled in here so the

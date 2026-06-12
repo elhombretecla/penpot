@@ -4,7 +4,7 @@
 ;;
 ;; Copyright (c) KALEIDOS INC
 
-(ns app.main.ui.viewer.html-mode.preview-doc
+(ns app.main.ui.html-mode.preview-doc
   "All HTML-document assembly for HTML Mode's iframes:
 
    - `build-static-doc`      — non-interactive preview (Design Tokens
@@ -16,10 +16,10 @@
    Kept separate from the views that consume it so we don't pull any
    of them into the others' require graph. The inline JS injected into
    the interactive documents lives in
-   `app.main.ui.viewer.html-mode.bridge-scripts`."
+   `app.main.ui.html-mode.bridge-scripts`."
   (:require
    [app.main.fonts :as fonts]
-   [app.main.ui.viewer.html-mode.bridge-scripts :as scripts]
+   [app.main.ui.html-mode.bridge-scripts :as scripts]
    [beicon.v2.core :as rx]
    [cuerdas.core :as str]))
 

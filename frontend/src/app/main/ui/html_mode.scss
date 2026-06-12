@@ -7,11 +7,23 @@
 @use "ds/_sizes.scss" as *;
 @use "ds/typography.scss" as t;
 
+// Standalone page layout: fixed-height header on top, the section
+// filling the rest of the viewport.
+.html-mode-page {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  block-size: 100vh;
+  inline-size: 100vw;
+  overflow: hidden;
+  background-color: var(--color-background-primary);
+}
+
 .html-mode-section {
   display: flex;
   flex-direction: row;
   inline-size: 100%;
   block-size: 100%;
+  min-block-size: 0;
   background-color: var(--color-background-primary);
 
   // Prototype mode hides both sidebars (the components are also
@@ -72,15 +84,12 @@
 }
 
 .preview-toolbar {
-  // The toolbar is a three-zone bar: refresh on the left, the
-  // segmented Prototype/Workspace control centred, and an empty
-  // right zone reserved for future controls. We use a 1fr / auto /
-  // 1fr grid so the centre column is the natural width of the
-  // tab-switcher and the side columns flex around it — that keeps
-  // the tabs perfectly centred even when the left/right zones gain
-  // or lose content.
+  // Two-zone bar: refresh on the left, device-view controls (when the
+  // Prototype section shows them) on the right. The section switcher
+  // that used to sit centred here now lives in the page header's
+  // mode-zone.
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: var(--sp-s);
   padding-block: var(--sp-xs);
@@ -111,21 +120,6 @@
 
   to {
     transform: rotate(360deg);
-  }
-}
-
-// The centred tab-switcher. The DS component renders an empty
-// `tabpanel` section underneath — we hide it because the toolbar is
-// only meant to host the segmented control.
-.toolbar-tabs {
-  justify-self: center;
-
-  // The DS `tab-switcher*` always renders a `tabpanel` section under
-  // the tabs (for the panel-driven variant). We're using it purely
-  // as a segmented control, so the panel has no content — hide it
-  // so it doesn't reserve vertical space inside the toolbar.
-  :global([role="tabpanel"]) {
-    display: none;
   }
 }
 

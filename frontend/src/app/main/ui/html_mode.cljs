@@ -4,10 +4,15 @@
 ;;
 ;; Copyright (c) KALEIDOS INC
 
-(ns app.main.ui.viewer.html-mode
-  "HTML Mode section of the viewer.
+(ns app.main.ui.html-mode
+  "HTML Mode — a standalone top-level mode (route `:html-mode`) that
+   renders Penpot pages as real HTML.
 
-   The component renders the current Penpot page as HTML (via
+   This namespace is the entry of the `:main-html-mode` JS module: it
+   hosts `html-mode-page*` (state lifecycle + permission gate + header)
+   and the section component below it.
+
+   The section renders the current Penpot page as HTML (via
    `@penpot/html-converter`, fed by `app.main.data.html-mode.adapter`)
    inside a sandboxed iframe, alongside a CSS inspector sidebar. The
    converter output is cached by (file-id, page-id, file-revn) in
@@ -45,7 +50,7 @@
    and escape entirely. We accept that trade-off because:
 
    - **The only script in the iframe is ours.** `select-bridge-script`
-     (in `app.main.ui.viewer.html-mode.bridge-scripts`) is the entire
+     (in `app.main.ui.html-mode.bridge-scripts`) is the entire
      JS payload; the converter output is style-only and never emits
      `<script>` tags. If a future converter version started emitting
      third-party scripts, this calculus must be revisited.
@@ -74,27 +79,31 @@
   (:require-macros [app.main.style :as stl])
   (:require
    ["@penpot/html-converter" :as cv]
+   [app.common.data :as d]
+   [app.common.data.macros :as dm]
    [app.common.types.shape.interactions :as ctsi]
    [app.common.uuid :as uuid]
+   [app.config :as cf]
    [app.main.data.html-mode :as dhtml]
    [app.main.data.html-mode.adapter :as adapter]
    [app.main.data.html-mode.cache :as cache]
    [app.main.data.html-mode.converter-ctx :as cctx]
    [app.main.data.html-mode.prototype :as proto]
-   [app.main.data.viewer :as dv]
-   [app.main.refs :as refs]
    [app.main.router :as rt]
    [app.main.store :as st]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :as i]
-   [app.main.ui.ds.layout.tab-switcher :refer [tab-switcher*]]
-   [app.main.ui.viewer.html-mode.components :refer [components-view*]]
-   [app.main.ui.viewer.html-mode.design-tokens :refer [design-tokens-view*]]
-   [app.main.ui.viewer.html-mode.device-view :refer [device-view-controls*]]
-   [app.main.ui.viewer.html-mode.export-modal]
-   [app.main.ui.viewer.html-mode.layers-tree :refer [layers-tree*]]
-   [app.main.ui.viewer.html-mode.preview-doc :as pdoc]
-   [app.main.ui.viewer.html-mode.sidebar :refer [html-mode-sidebar*]]
+   [app.main.ui.ds.product.loader :refer [loader*]]
+   [app.main.ui.html-mode.components :refer [components-view*]]
+   [app.main.ui.html-mode.design-tokens :refer [design-tokens-view*]]
+   [app.main.ui.html-mode.device-view :refer [device-view-controls*]]
+   [app.main.ui.html-mode.export-modal]
+   [app.main.ui.html-mode.header :refer [header*]]
+   [app.main.ui.html-mode.layers-tree :refer [layers-tree*]]
+   [app.main.ui.html-mode.preview-doc :as pdoc]
+   [app.main.ui.html-mode.refs :as hrefs]
+   [app.main.ui.html-mode.sidebar :refer [html-mode-sidebar*]]
+   [app.main.ui.modal :refer [modal-container*]]
    [app.util.dom :as dom]
    [app.util.i18n :refer [tr]]
    [rumext.v2 :as mf]))
@@ -111,10 +120,10 @@
 ;;
 ;; `@font-face` collection and the HTML document builders (workspace,
 ;; prototype, and static preview docs) live in
-;; `app.main.ui.viewer.html-mode.preview-doc` (aliased `pdoc`), shared
+;; `app.main.ui.html-mode.preview-doc` (aliased `pdoc`), shared
 ;; with the Design Tokens and Components views. The inline bridge
 ;; scripts injected into those documents live in
-;; `app.main.ui.viewer.html-mode.bridge-scripts`.
+;; `app.main.ui.html-mode.bridge-scripts`.
 
 (defn- render-page-html
   "Resolve a Promise of `{:html, :fonts-css, :tokens-css}` for the given
@@ -259,21 +268,18 @@
 ;; iframes positioned via `ctsi/calc-overlay-position` (the same math
 ;; the SVG viewer uses); prev-screen pops a nav stack.
 
-(defn- nav-to-frame-index!
-  "Sync the URL `?index=` to the position of `frame-id-str` in the
-   page's top-level frames index. Must be called on every controller-
-   driven prototype navigation (animated, instant, or prev-screen) so
-   external consumers — the viewer header breadcrumb, the thumbnail
-   pagination, link-sharing — see the current board. No-op when the
-   id isn't a top-level frame, which keeps overlay actions (whose
-   destination may live deeper in `:objects`) from corrupting the
-   query string."
+(defn- nav-to-frame!
+  "Sync the URL `?frame-id=` to the currently displayed board. Must be
+   called on every controller-driven prototype navigation (animated,
+   instant, or prev-screen) so external consumers — the page header's
+   board picker, link-sharing, reloads — see the current board. No-op
+   when the id isn't a top-level frame, which keeps overlay actions
+   (whose destination may live deeper in `:objects`) from corrupting
+   the query string."
   [page frame-id-str]
-  (when frame-id-str
-    (when-let [idx (some (fn [[i f]] (when (= (str (:id f)) frame-id-str) i))
-                         (map-indexed vector (:frames page)))]
-      (let [params (rt/get-params @st/state)]
-        (st/emit! (rt/nav :viewer (assoc params :index idx)))))))
+  (when (and frame-id-str
+             (some (fn [f] (= (str (:id f)) frame-id-str)) (:frames page)))
+    (st/emit! (dhtml/go-to-frame frame-id-str))))
 
 (defn- run-overlay-anim!
   "Play an overlay enter / exit animation on `el` with the Web Animations
@@ -380,17 +386,12 @@
                                     :interaction   :mouse
                                     :mockup?       false
                                     :bg-color      nil})
-        ;; `html-mode` is `:workspace` (default), `:prototype`, or
-        ;; `:design-tokens`. It comes from the URL `?mode=` query param
-        ;; so the selection is shareable. The Workspace/Prototype/
-        ;; Design Tokens tab switcher emits a route nav that flips it.
+        ;; `html-mode` is `:workspace` (default), `:prototype`,
+        ;; `:design-tokens` or `:components`. It comes from the URL
+        ;; `?mode=` query param so the selection is shareable; the
+        ;; header's mode-zone emits `dhtml/go-to-mode` to flip it.
         mode      (or html-mode :workspace)
         mode-str  (name mode)
-        on-mode-change
-        (mf/use-fn
-         (fn [tab]
-           (let [params (rt/get-params @st/state)]
-             (st/emit! (rt/nav :viewer (assoc params :mode tab))))))
         last-refresh* (mf/use-ref (js/Date.now))
         iframe-ref    (mf/use-ref nil)
         ;; The `.preview-stage` DOM node. The device-view touch-mode effect
@@ -448,23 +449,22 @@
         _ (mf/set-ref-val! proto-live* (deref proto-state*))
         _ (mf/set-ref-val! state-html* html)
         selected (deref selected*)
-        ;; Subscribe to the shared viewer zoom (the same value the
-        ;; SVG viewer renders at). The header's zoom widget dispatches
-        ;; `dv/increase-zoom` / `dv/decrease-zoom` / `dv/reset-zoom` /
-        ;; `dv/zoom-to-fit` / `dv/zoom-to-fill`, all of which mutate
-        ;; this. We project it onto the rendered content via a CSS
-        ;; `zoom` property on a wrapper div — that scales layout AND
-        ;; visual (unlike `transform: scale` which only scales
-        ;; visual), so the surrounding `.preview-stage`'s
-        ;; `overflow: auto` correctly engages when zoomed past 100%.
-        viewer-local (mf/deref refs/viewer-local)
-        zoom         (or (:zoom viewer-local) 1)
+        ;; Subscribe to the mode-local zoom. The page header's zoom
+        ;; widget dispatches `dhtml/increase-zoom` / `decrease-zoom` /
+        ;; `reset-zoom`, all of which mutate `[:html-mode-local :zoom]`
+        ;; — fully independent from the SVG viewer's zoom. We project
+        ;; it onto the rendered content via a CSS `zoom` property on a
+        ;; wrapper div — that scales layout AND visual (unlike
+        ;; `transform: scale` which only scales visual), so the
+        ;; surrounding `.preview-stage`'s `overflow: auto` correctly
+        ;; engages when zoomed past 100%.
+        zoom         (or (mf/deref hrefs/zoom) 1)
 
         request-refresh
         (mf/use-fn
          (fn []
            (mf/set-ref-val! last-refresh* (js/Date.now))
-           (st/emit! (dhtml/refresh-viewer-bundle))))
+           (st/emit! (dhtml/refresh-bundle))))
 
         ;; Click on the pane background (outside the board) while in
         ;; prototype mode: flash the pulse highlight on every shape that
@@ -605,7 +605,7 @@
                                                         :error      nil
                                                         :updated-at (js/Date.now)})
                                         (mf/set-ref-val! rendered-frame-id* dest-id)
-                                        (nav-to-frame-index! page dest-id))))))
+                                        (nav-to-frame! page dest-id))))))
                          (.catch (fn [^js err]
                                    (js/console.warn "Prototype navigate failed:" err))))))
 
@@ -624,8 +624,8 @@
                                (.then (fn [parts]
                                         (let [doc (pdoc/build-prototype-document parts page dest-frame {:transparent-bg? true})
                                               rect (proto/compute-overlay-rect page interaction
-                                                                         source-shape base-frame
-                                                                         dest-frame)]
+                                                                               source-shape base-frame
+                                                                               dest-frame)]
                                           (swap! proto-state* update :overlays conj
                                                  {:id        dest-id
                                                   :source-id source-id
@@ -670,7 +670,7 @@
                                                       :error      nil
                                                       :updated-at (js/Date.now)})
                                       (mf/set-ref-val! rendered-frame-id* prev)
-                                      (nav-to-frame-index! page prev))))
+                                      (nav-to-frame! page prev))))
                            (.catch (fn [^js err]
                                      (js/console.warn "Prototype prev-screen failed:" err)))))))
 
@@ -851,7 +851,7 @@
                                   :error      nil
                                   :updated-at (js/Date.now)})
                   (mf/set-ref-val! rendered-frame-id* dest-id)
-                  (nav-to-frame-index! page dest-id)))]
+                  (nav-to-frame! page dest-id)))]
           ;; Wait one paint for both iframes to be in the DOM before
           ;; animating — without this, getBoundingClientRect inside
           ;; the iframe runtime can race with the transform.
@@ -922,7 +922,7 @@
                           (when (or (nil? last-ts)
                                     (> (- now last-ts) auto-refresh-throttle-ms))
                             (mf/set-ref-val! last-refresh* now)
-                            (st/emit! (dhtml/refresh-viewer-bundle))))))]
+                            (st/emit! (dhtml/refresh-bundle))))))]
         (.addEventListener js/document "visibilitychange" handler)
         (fn [] (.removeEventListener js/document "visibilitychange" handler))))
 
@@ -934,7 +934,7 @@
     ;; mode renders its own layout (no iframe, no zoom), so we skip it.
     (mf/with-effect [mode]
       (when (or (= mode :prototype) (= mode :workspace))
-        (st/emit! dv/reset-zoom)))
+        (st/emit! dhtml/reset-zoom)))
 
     ;; Catch Ctrl/Cmd + `+`/`=`/`-`/`0` keyboard shortcuts and dispatch
     ;; the same `dv/*` zoom actions the header widget uses, so the
@@ -959,9 +959,9 @@
                                  (not (editable? (.-target e))))
                         (let [key (.-key e)
                               action (case key
-                                       ("+" "=") dv/increase-zoom
-                                       ("-" "_") dv/decrease-zoom
-                                       "0"       dv/reset-zoom
+                                       ("+" "=") dhtml/increase-zoom
+                                       ("-" "_") dhtml/decrease-zoom
+                                       "0"       dhtml/reset-zoom
                                        nil)]
                           (when action
                             (.preventDefault e)
@@ -1023,22 +1023,9 @@
                          :on-click request-refresh
                          :disabled (= status :loading)
                          :aria-label (tr "viewer.html-mode.toolbar.refresh")}]
-       ;; Centred segmented control (DS tab-switcher). The selected
-       ;; tab mirrors the URL `?mode=` query param so toggling here
-       ;; navigates the route; that in turn re-renders this component
-       ;; with the new `html-mode` prop and the render effect picks
-       ;; the right pipeline.
-       [:> tab-switcher* {:class (stl/css :toolbar-tabs)
-                          :tabs [{:id "prototype"
-                                  :label (tr "viewer.html-mode.toolbar.prototype")}
-                                 {:id "workspace"
-                                  :label (tr "viewer.html-mode.toolbar.workspace")}
-                                 {:id "design-tokens"
-                                  :label (tr "viewer.html-mode.toolbar.design-tokens")}
-                                 {:id "components"
-                                  :label (tr "viewer.html-mode.toolbar.components")}]
-                          :selected mode-str
-                          :on-change on-mode-change}]
+       ;; NOTE: the section switcher (Prototype / Workspace / Design
+       ;; Tokens / Components) lives in the page header's mode-zone
+       ;; (`app.main.ui.html-mode.header`), not in this toolbar.
        ;; Device-view controls live in the toolbar's right zone
        ;; (`justify-self: end`). Prototype tab only — the workspace /
        ;; design-token views have no resizable board.
@@ -1097,143 +1084,143 @@
                  :on-click highlight-interactions!}
            [:div {:class (stl/css :zoom-container)
                   :style {:zoom zoom}}
-           (if (= mode :prototype)
-             ;; Prototype mode: isolate the board in its own sized
-             ;; stack so interactions and animations affect ONLY the
-             ;; board, not the surrounding pane background. The stack
-             ;; is sized to the current board's dimensions; during a
-             ;; transition it expands to fit both from / to boards
-             ;; (using max width / height) so neither gets clipped
-             ;; while sliding. `.board-clip` wraps the animated
-             ;; iframes with `overflow:hidden` so slide / push
-             ;; animations can't visually escape the board area.
-             ;; Overlays sit OUTSIDE the clip so they can extend past
-             ;; the board edge (matching the SVG viewer's behaviour).
-             ;;
-             ;; The board iframes are rendered as a list of "layers"
-             ;; keyed by `frame-id`. In steady state there's one
-             ;; layer (the current board); during a navigate
-             ;; transition there are two (from + to). When the
-             ;; transition commits, the layers list shrinks back to
-             ;; one — and because React reconciles by key, the
-             ;; surviving layer's DOM element and iframe persist
-             ;; without remounting. The browser never reloads the
-             ;; iframe's srcDoc, eliminating the post-animation
-             ;; flicker that earlier versions had.
-             (let [proto-frame    (or (proto/find-frame-by-id-str page current-frame-id) frame)
-                   from-frame     (when transition (proto/find-frame-by-id-str page (:from-id transition)))
-                   to-frame       (when transition (proto/find-frame-by-id-str page (:to-id transition)))
-                   ;; Device-view size override: when the user picks a preset
-                   ;; or types a custom size, the board-stack uses those dims
-                   ;; instead of the board's design size. The iframe content
-                   ;; reflows because the board root is forced to fill the
-                   ;; body (see `build-prototype-document`). During a navigate
-                   ;; transition we keep the natural board dims so neither the
-                   ;; from- nor the to-board gets clipped mid-slide; the stack
-                   ;; snaps back to the override once the transition commits.
-                   override       (:size-override device-view)
-                   {pw :width ph :height} (or override (proto/board-dims proto-frame))
-                   {fw :width fh :height} (proto/board-dims (or from-frame proto-frame))
-                   {tw :width th :height} (proto/board-dims (or to-frame proto-frame))
-                   stack-w        (if transition (max fw tw) pw)
-                   stack-h        (if transition (max fh th) ph)
-                   layers         (if transition
-                                    [{:id (:from-id transition)
-                                      :doc (:from-doc transition)
-                                      :role "from"}
-                                     {:id (:to-id transition)
-                                      :doc (:to-doc transition)
-                                      :role "to"}]
-                                    (when (and current-frame-id html)
-                                      [{:id current-frame-id
-                                        :doc html
-                                        :role "base"}]))
-                   needs-backdrop? (some (fn [o]
-                                           (let [opts (:options o)]
-                                             (or (:background-overlay opts)
-                                                 (:close-click-outside opts))))
-                                         overlays)
-                   close-all-bg-or-click
-                   (fn []
-                     ;; Click on backdrop: flag every close-click-outside
-                     ;; overlay as `:closing?` so it plays its exit
-                     ;; animation; `overlay-frame*` removes each from state
-                     ;; when the animation settles. Mirrors the viewer's
-                     ;; `on-click` handler in `viewer.cljs:157-164`.
-                     (swap! proto-state* update :overlays
-                            (fn [xs]
-                              (mapv (fn [o]
-                                      (if (get-in o [:options :close-click-outside])
-                                        (assoc o :closing? true)
-                                        o))
-                                    xs))))
-                   on-overlay-closed
-                   (fn [id]
-                     (swap! proto-state* update :overlays
-                            (fn [xs] (into [] (remove (fn [o] (= (:id o) id))) xs))))]
-               (when (and (pos? stack-w) (pos? stack-h))
-                 (let [board-stack
-                       ;; `mf/html` compiles this hiccup to a React element
-                       ;; up front. Without it, binding the vector in a let
-                       ;; and returning it as a dynamic child leaves it an
-                       ;; uncompiled CLJS vector, which React iterates as a
-                       ;; collection — rendering `:div` as a child and
-                       ;; throwing "objects are not valid as a React child".
-                       (mf/html
-                        [:div {:class (stl/css :board-stack)
-                               :style {:width  (str stack-w "px")
-                                       :height (str stack-h "px")}}
-                  [:div {:class (stl/css :board-clip)}
-                   (for [{:keys [id doc role]} layers]
-                     [:div {:key id
-                            :class (stl/css :board-layer)
-                            :data-role role
-                            :ref #(set-layer-ref! id %)}
-                      [:iframe {:class           (stl/css :preview-iframe)
-                                :title           (tr "viewer.html-mode.iframe-title")
-                                :src-doc         doc
-                                ;; `allow-same-origin` is required so the iframe can
-                                ;; load fonts and images with the user's session
-                                ;; credentials. The only script inside is ours
-                                ;; (`prototype-bridge-script`). See namespace
-                                ;; docstring for the full threat model.
-                                :sandbox         "allow-scripts allow-same-origin"
-                                :referrer-policy "no-referrer"}]])]
-                  (when (seq overlays)
-                    [:*
-                     (when needs-backdrop?
-                       [:div {:class (stl/css :overlay-backdrop)
-                              :on-click close-all-bg-or-click}])
-                     (for [o overlays]
-                       [:> overlay-frame* {:key       (:id o)
-                                           :overlay   o
-                                           :on-closed on-overlay-closed}])])])]
-                   ;; Optional decorative device frame (bezel) around the
-                   ;; board. Rendered as a wrapper so the previewed board
-                   ;; keeps its EXACT pixel size (a border on `.board-stack`
-                   ;; would shrink the content under border-box).
-                   (if (:mockup? device-view)
-                     [:div {:class (stl/css :device-frame)} board-stack]
-                     board-stack))))
+            (if (= mode :prototype)
+              ;; Prototype mode: isolate the board in its own sized
+              ;; stack so interactions and animations affect ONLY the
+              ;; board, not the surrounding pane background. The stack
+              ;; is sized to the current board's dimensions; during a
+              ;; transition it expands to fit both from / to boards
+              ;; (using max width / height) so neither gets clipped
+              ;; while sliding. `.board-clip` wraps the animated
+              ;; iframes with `overflow:hidden` so slide / push
+              ;; animations can't visually escape the board area.
+              ;; Overlays sit OUTSIDE the clip so they can extend past
+              ;; the board edge (matching the SVG viewer's behaviour).
+              ;;
+              ;; The board iframes are rendered as a list of "layers"
+              ;; keyed by `frame-id`. In steady state there's one
+              ;; layer (the current board); during a navigate
+              ;; transition there are two (from + to). When the
+              ;; transition commits, the layers list shrinks back to
+              ;; one — and because React reconciles by key, the
+              ;; surviving layer's DOM element and iframe persist
+              ;; without remounting. The browser never reloads the
+              ;; iframe's srcDoc, eliminating the post-animation
+              ;; flicker that earlier versions had.
+              (let [proto-frame    (or (proto/find-frame-by-id-str page current-frame-id) frame)
+                    from-frame     (when transition (proto/find-frame-by-id-str page (:from-id transition)))
+                    to-frame       (when transition (proto/find-frame-by-id-str page (:to-id transition)))
+                    ;; Device-view size override: when the user picks a preset
+                    ;; or types a custom size, the board-stack uses those dims
+                    ;; instead of the board's design size. The iframe content
+                    ;; reflows because the board root is forced to fill the
+                    ;; body (see `build-prototype-document`). During a navigate
+                    ;; transition we keep the natural board dims so neither the
+                    ;; from- nor the to-board gets clipped mid-slide; the stack
+                    ;; snaps back to the override once the transition commits.
+                    override       (:size-override device-view)
+                    {pw :width ph :height} (or override (proto/board-dims proto-frame))
+                    {fw :width fh :height} (proto/board-dims (or from-frame proto-frame))
+                    {tw :width th :height} (proto/board-dims (or to-frame proto-frame))
+                    stack-w        (if transition (max fw tw) pw)
+                    stack-h        (if transition (max fh th) ph)
+                    layers         (if transition
+                                     [{:id (:from-id transition)
+                                       :doc (:from-doc transition)
+                                       :role "from"}
+                                      {:id (:to-id transition)
+                                       :doc (:to-doc transition)
+                                       :role "to"}]
+                                     (when (and current-frame-id html)
+                                       [{:id current-frame-id
+                                         :doc html
+                                         :role "base"}]))
+                    needs-backdrop? (some (fn [o]
+                                            (let [opts (:options o)]
+                                              (or (:background-overlay opts)
+                                                  (:close-click-outside opts))))
+                                          overlays)
+                    close-all-bg-or-click
+                    (fn []
+                      ;; Click on backdrop: flag every close-click-outside
+                      ;; overlay as `:closing?` so it plays its exit
+                      ;; animation; `overlay-frame*` removes each from state
+                      ;; when the animation settles. Mirrors the viewer's
+                      ;; `on-click` handler in `viewer.cljs:157-164`.
+                      (swap! proto-state* update :overlays
+                             (fn [xs]
+                               (mapv (fn [o]
+                                       (if (get-in o [:options :close-click-outside])
+                                         (assoc o :closing? true)
+                                         o))
+                                     xs))))
+                    on-overlay-closed
+                    (fn [id]
+                      (swap! proto-state* update :overlays
+                             (fn [xs] (into [] (remove (fn [o] (= (:id o) id))) xs))))]
+                (when (and (pos? stack-w) (pos? stack-h))
+                  (let [board-stack
+                        ;; `mf/html` compiles this hiccup to a React element
+                        ;; up front. Without it, binding the vector in a let
+                        ;; and returning it as a dynamic child leaves it an
+                        ;; uncompiled CLJS vector, which React iterates as a
+                        ;; collection — rendering `:div` as a child and
+                        ;; throwing "objects are not valid as a React child".
+                        (mf/html
+                         [:div {:class (stl/css :board-stack)
+                                :style {:width  (str stack-w "px")
+                                        :height (str stack-h "px")}}
+                          [:div {:class (stl/css :board-clip)}
+                           (for [{:keys [id doc role]} layers]
+                             [:div {:key id
+                                    :class (stl/css :board-layer)
+                                    :data-role role
+                                    :ref #(set-layer-ref! id %)}
+                              [:iframe {:class           (stl/css :preview-iframe)
+                                        :title           (tr "viewer.html-mode.iframe-title")
+                                        :src-doc         doc
+                                        ;; `allow-same-origin` is required so the iframe can
+                                        ;; load fonts and images with the user's session
+                                        ;; credentials. The only script inside is ours
+                                        ;; (`prototype-bridge-script`). See namespace
+                                        ;; docstring for the full threat model.
+                                        :sandbox         "allow-scripts allow-same-origin"
+                                        :referrer-policy "no-referrer"}]])]
+                          (when (seq overlays)
+                            [:*
+                             (when needs-backdrop?
+                               [:div {:class (stl/css :overlay-backdrop)
+                                      :on-click close-all-bg-or-click}])
+                             (for [o overlays]
+                               [:> overlay-frame* {:key       (:id o)
+                                                   :overlay   o
+                                                   :on-closed on-overlay-closed}])])])]
+                    ;; Optional decorative device frame (bezel) around the
+                    ;; board. Rendered as a wrapper so the previewed board
+                    ;; keeps its EXACT pixel size (a border on `.board-stack`
+                    ;; would shrink the content under border-box).
+                    (if (:mockup? device-view)
+                      [:div {:class (stl/css :device-frame)} board-stack]
+                      board-stack))))
 
-             ;; Non-prototype modes (workspace): iframe fills the
-             ;; whole preview-stage as before. Pan/zoom + inspector
-             ;; selection bridge live inside the iframe.
-             [:iframe {:class           (stl/css :preview-iframe)
-                       :ref             iframe-ref
-                       :title           (tr "viewer.html-mode.iframe-title")
-                       :src-doc         html
-                       ;; `allow-same-origin` is required so the iframe can load
-                       ;; fonts and image assets from Penpot's own URLs with the
-                       ;; user's session credentials — without it the iframe has
-                       ;; an opaque origin and cross-origin requests for fonts
-                       ;; fail, causing text shapes to render with system
-                       ;; fallback fonts and overflow their measured bounds.
-                       ;; The injected script is one we control, so granting
-                       ;; same-origin is acceptable. See the namespace docstring
-                       ;; for the full threat model.
-                       :sandbox         "allow-scripts allow-same-origin"
-                       :referrer-policy "no-referrer"}])]]
+              ;; Non-prototype modes (workspace): iframe fills the
+              ;; whole preview-stage as before. Pan/zoom + inspector
+              ;; selection bridge live inside the iframe.
+              [:iframe {:class           (stl/css :preview-iframe)
+                        :ref             iframe-ref
+                        :title           (tr "viewer.html-mode.iframe-title")
+                        :src-doc         html
+                        ;; `allow-same-origin` is required so the iframe can load
+                        ;; fonts and image assets from Penpot's own URLs with the
+                        ;; user's session credentials — without it the iframe has
+                        ;; an opaque origin and cross-origin requests for fonts
+                        ;; fail, causing text shapes to render with system
+                        ;; fallback fonts and overflow their measured bounds.
+                        ;; The injected script is one we control, so granting
+                        ;; same-origin is acceptable. See the namespace docstring
+                        ;; for the full threat model.
+                        :sandbox         "allow-scripts allow-same-origin"
+                        :referrer-policy "no-referrer"}])]]
 
           ;; Default branch — exercised on the first render after the
           ;; user navigates AWAY from `:design-tokens`. React renders
@@ -1249,3 +1236,71 @@
 
      (when (= mode :workspace)
        [:> html-mode-sidebar* {:selected selected :page page :file file}])]))
+
+;; ---------------------------------------------------------------------------
+;; Standalone page
+;;
+;; `html-mode-page*` owns the state lifecycle (initialize/finalize on
+;; mount/unmount), the permission gate, and the page chrome (header +
+;; modal container). The section component above stays chrome-agnostic
+;; so it keeps working should it ever be embedded elsewhere.
+
+(mf/defc html-mode-view*
+  {::mf/private true}
+  [{:keys [data page-id frame-id index mode]}]
+  (let [{:keys [file project pages permissions]} data
+        page-id (or page-id (first (get-in file [:data :pages])))
+        page    (get pages page-id)
+        frames  (:frames page)
+        ;; Board resolution: explicit `?frame-id=`, then the legacy
+        ;; `?index=` (kept so pre-standalone URLs survive the redirect
+        ;; shim), then the first board.
+        frame   (or (when frame-id (d/seek #(= (:id %) frame-id) frames))
+                    (when (and index (< -1 index (count frames))) (get frames index))
+                    (first frames))
+        ;; Mirror of the access predicate the embedded section used:
+        ;; editors always pass; share-link visitors (logged or
+        ;; anonymous) need `who-inspect = "all"` on their link.
+        allowed (and (contains? cf/flags :html-mode)
+                     (or (:can-edit permissions)
+                         (= "all" (:who-inspect permissions))))]
+
+    (mf/with-effect [allowed]
+      (when-not allowed
+        (st/emit! (rt/nav :auth-login))))
+
+    (mf/with-effect [(:name file)]
+      (when-let [name (:name file)]
+        (dom/set-html-title (dm/str "</> " name))))
+
+    (when allowed
+      [:div {:class (stl/css :html-mode-page)}
+       [:> header* {:project project
+                    :file file
+                    :page page
+                    :frames frames
+                    :frame frame
+                    :mode mode
+                    :permissions permissions}]
+       [:> html-mode-section* {:page page
+                               :file file
+                               :frame frame
+                               :html-mode mode}]])))
+
+(mf/defc html-mode-page*
+  {::mf/lazy-load true}
+  [{:keys [file-id share-id] :as props}]
+  (let [data (mf/deref hrefs/html-mode-data)]
+
+    (mf/with-effect [file-id share-id]
+      (st/emit! (dhtml/initialize {:file-id file-id :share-id share-id}))
+      (fn []
+        (st/emit! (dhtml/finalize))))
+
+    (if (and (some? data)
+             (= file-id (dm/get-in data [:file :id])))
+      [:*
+       [:> modal-container*]
+       [:> html-mode-view* (mf/spread-props props {:data data})]]
+      [:> loader* {:title (tr "labels.loading")
+                   :overlay true}])))

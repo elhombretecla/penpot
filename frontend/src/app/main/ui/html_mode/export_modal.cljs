@@ -4,7 +4,7 @@
 ;;
 ;; Copyright (c) KALEIDOS INC
 
-(ns app.main.ui.viewer.html-mode.export-modal
+(ns app.main.ui.html-mode.export-modal
   "Export Shape modal for HTML Mode.
 
    Reuses `@penpot/html-converter`'s `convertShape` to produce the raw

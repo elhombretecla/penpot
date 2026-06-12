@@ -12,7 +12,7 @@
    escape here is load-bearing."
   (:require
    [app.common.uuid :as uuid]
-   [app.main.ui.viewer.html-mode.preview-doc :as pdoc]
+   [app.main.ui.html-mode.preview-doc :as pdoc]
    [cljs.test :as t]
    [cuerdas.core :as str]))
 

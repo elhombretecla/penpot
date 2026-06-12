@@ -4,7 +4,7 @@
 ;;
 ;; Copyright (c) KALEIDOS INC
 
-(ns app.main.ui.viewer.html-mode.device-view
+(ns app.main.ui.html-mode.device-view
   "Popover that lets the user preview the prototype board at a different
    size (device presets / custom dimensions), simulate touch input, draw a
    decorative device frame and recolor the preview stage. All of this is

@@ -4,12 +4,12 @@
 ;;
 ;; Copyright (c) KALEIDOS INC
 
-(ns app.main.ui.viewer.html-mode.bridge-scripts
+(ns app.main.ui.html-mode.bridge-scripts
   "The two inline JS programs injected into HTML Mode's iframes.
 
    Both are static strings with zero runtime interpolation — they are
    kept as CLJS string literals (rather than separate .js assets) so the
-   document builders in `app.main.ui.viewer.html-mode.preview-doc` can
+   document builders in `app.main.ui.html-mode.preview-doc` can
    inline them synchronously into the iframe `srcDoc` without a fetch.
 
    - `select-bridge-script` powers the WORKSPACE tab: hover/selection

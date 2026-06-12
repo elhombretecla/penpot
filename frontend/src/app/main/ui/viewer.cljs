@@ -15,7 +15,6 @@
    [app.common.geom.shapes.bounds :as gsb]
    [app.common.types.shape.interactions :as ctsi]
    [app.common.types.text :as txt]
-   [app.config :as cf]
    [app.main.data.comments :as dcm]
    [app.main.data.viewer :as dv]
    [app.main.data.viewer.shortcuts :as sc]
@@ -27,13 +26,12 @@
    [app.main.ui.hooks :as hooks]
    [app.main.ui.icons :as deprecated-icon]
    [app.main.ui.modal :refer [modal-container*]]
+   [app.main.ui.share-link]
    [app.main.ui.viewer.comments :refer [comments-layer comments-sidebar*]]
    [app.main.ui.viewer.header :as header]
-   [app.main.ui.viewer.html-mode :refer [html-mode-section*]]
    [app.main.ui.viewer.inspect :as inspect]
    [app.main.ui.viewer.interactions :as interactions]
    [app.main.ui.viewer.login]
-   [app.main.ui.viewer.share-link]
    [app.main.ui.viewer.thumbnails :refer [thumbnails-panel*]]
    [app.util.dom :as dom]
    [app.util.dom.normalize-wheel :as nw]
@@ -280,7 +278,7 @@
                           :zoom zoom}])]])
 
 (mf/defc viewer-content*
-  [{:keys [data page-id share-id section index interactions-mode html-mode share]}]
+  [{:keys [data page-id share-id section index interactions-mode share]}]
   (let [{:keys [file users project permissions]} data
         allowed (or
                  (= section :interactions)
@@ -289,16 +287,6 @@
                           (and (true? (:is-logged permissions))
                                (= (:who-comment permissions) "all"))))
                  (and (= section :inspect)
-                      (or (:can-edit permissions)
-                          (and (true? (:is-logged permissions))
-                               (= (:who-inspect permissions) "all"))))
-                 ;; HTML Mode is experimental: the section is reachable
-                 ;; only while the `html-mode` flag is enabled, mirroring
-                 ;; the gating of its entry points (the viewer header and
-                 ;; the workspace toolbar). Without the flag check a direct
-                 ;; `?section=html` URL would bypass the flag entirely.
-                 (and (= section :html)
-                      (contains? cf/flags :html-mode)
                       (or (:can-edit permissions)
                           (and (true? (:is-logged permissions))
                                (= (:who-inspect permissions) "all")))))
@@ -579,12 +567,6 @@
                                                      :fullscreen fullscreen?)
                                 :on-click click-on-screen}
        (cond
-         (= section :html)
-         [:> html-mode-section* {:page page
-                                 :file file
-                                 :frame frame
-                                 :html-mode html-mode}]
-
          (empty? frames)
          [:section {:class (stl/css :empty-state)}
           [:span (tr "viewer.empty-state")]]
@@ -634,7 +616,6 @@
                         :permissions permissions
                         :zoom zoom
                         :section section
-                        :html-mode html-mode
                         :shown-thumbnails (:show-thumbnails local)
                         :interactions-mode interactions-mode
                         :share share}]]))

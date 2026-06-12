@@ -25,7 +25,7 @@
      `slide-keyframes`, `push-from-keyframes`).
 
    The stateful orchestration (React state, WAAPI invocation, URL
-   sync) stays in `app.main.ui.viewer.html-mode`."
+   sync) stays in `app.main.ui.html-mode`."
   (:require
    [app.common.geom.point :as gpt]
    [app.common.geom.shapes.bounds :as gsb]

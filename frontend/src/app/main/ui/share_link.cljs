@@ -4,7 +4,7 @@
 ;;
 ;; Copyright (c) KALEIDOS INC Sucursal en España SL
 
-(ns app.main.ui.viewer.share-link
+(ns app.main.ui.share-link
   (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data :as d]
@@ -61,8 +61,14 @@
                           :who-inspect "team"})
         options         (deref options*)
 
+        ;; The generated link reopens the mode it was created from:
+        ;; share links minted in HTML Mode resolve against the
+        ;; `:html-mode` route; everywhere else keeps producing viewer
+        ;; URLs exactly as before.
+        html-mode?      (= :html-mode (dm/get-in route [:data :name]))
+
         current-link
-        (mf/with-memo [slinks options page-ids]
+        (mf/with-memo [slinks options page-ids html-mode?]
           (let [{:keys [pages who-comment who-inspect] :as params} (prepare-params options)
                 slink  (d/seek #(and (= (:who-inspect %) who-inspect)
                                      (= (:who-comment %) who-comment)
@@ -72,13 +78,17 @@
               (let [page-id (d/seek #(contains? (:pages slink) %) page-ids)
                     params  (-> (:query-params route)
                                 (assoc :share-id (:id slink))
-                                (assoc :page-id page-id)
-                                (assoc :index "0"))
+                                (assoc :page-id page-id))
+                    params  (if html-mode?
+                              (dissoc params :index)
+                              (assoc params :index "0"))
                     params  (if (nil? zoom-type)
                               (dissoc params :zoom)
                               (assoc params :zoom zoom-type))
 
-                    href    (rt/resolve router :viewer params)]
+                    href    (rt/resolve router
+                                        (if html-mode? :html-mode :viewer)
+                                        params)]
                 (dm/str (assoc cf/public-uri :fragment href))))))
 
         on-close

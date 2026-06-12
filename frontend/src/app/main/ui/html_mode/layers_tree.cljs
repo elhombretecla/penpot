@@ -4,7 +4,7 @@
 ;;
 ;; Copyright (c) KALEIDOS INC
 
-(ns app.main.ui.viewer.html-mode.layers-tree
+(ns app.main.ui.html-mode.layers-tree
   "Left-side layers tree for HTML Mode.
 
    Mirrors the visual conventions of the viewer's Inspect left sidebar
