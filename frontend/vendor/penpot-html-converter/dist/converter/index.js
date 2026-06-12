@@ -3,7 +3,7 @@ import { renderPage } from './page';
 import { buildTree, getChildren } from './tree';
 export { buildPenpotFontsCss } from './utils/fonts';
 export { decl, SUPPORTED_PROPS } from './decl';
-export { extractTokens, tokensToCss, tokenToCssVar, tokenToCssVarName, extractAllTokens } from './tokens';
+export { extractTokens, tokensToCss, tokenToCssVar, tokenToCssVarName, extractAllTokens, } from './tokens';
 // NOTE: Upstream uses `oxfmt` to pretty-print the HTML when `ctx.format !== false`.
 // The Penpot integration always passes `format: false`, so this helper is a no-op
 // and the `oxfmt` dependency has been removed from the vendored copy.

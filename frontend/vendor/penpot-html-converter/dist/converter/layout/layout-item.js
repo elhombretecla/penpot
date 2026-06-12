@@ -30,7 +30,7 @@ export function layoutItemSizingStyle(shape, parent, parentWraps = false) {
         // overflow from inflating the flex container's cross-axis size.
         if (isRowDir) {
             if (parentWraps) {
-                parts.push(decl.flex('1 0 ' + w + 'px'));
+                parts.push(decl.flex(`1 0 ${w}px`));
                 parts.push(decl.width(w));
             }
             else {
@@ -57,7 +57,7 @@ export function layoutItemSizingStyle(shape, parent, parentWraps = false) {
             parts.push(parentWraps ? decl.height(h) : decl.height('100%'));
         }
         else if (parentWraps) {
-            parts.push(decl.flex('1 0 ' + h + 'px'));
+            parts.push(decl.flex(`1 0 ${h}px`));
             parts.push(decl.height(h));
         }
         else {

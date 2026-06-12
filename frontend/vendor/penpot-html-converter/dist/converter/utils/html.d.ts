@@ -6,7 +6,7 @@
  * Single quotes are intentionally not escaped because all generated attributes
  * use double-quote delimiters, making single quotes safe inside attribute values.
  */
-export declare function escapeHtml(text: string): string;
+export declare function escapeHtml(text: unknown): string;
 /**
  * Builds an HTML tag string.
  *

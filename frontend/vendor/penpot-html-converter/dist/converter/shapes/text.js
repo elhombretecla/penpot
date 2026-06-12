@@ -125,12 +125,10 @@ function firstNonEmptyLeaf(shape) {
             }
         }
     }
-    // Fallback to the first leaf/paragraph even if empty so we still
-    // surface whatever typography the user picked.
     const firstSet = shape.content.children[0];
     const firstPara = firstSet?.children?.[0];
     const firstLeaf = firstPara?.children?.[0];
-    return firstLeaf ? { leaf: firstLeaf, para: firstPara } : null;
+    return firstLeaf && firstPara ? { leaf: firstLeaf, para: firstPara } : null;
 }
 export function renderText(shape, ctx) {
     collectTextFonts(shape, ctx);
@@ -158,7 +156,7 @@ export function renderText(shape, ctx) {
     // for any leaf that defines its own values.
     const primary = firstNonEmptyLeaf(shape);
     const typographyStyle = primary
-        ? mergeStyles(textLeafToStyles({ text: '', ...primary.para, ...primary.leaf }, ctx.typographies), primary.para?.textAlign
+        ? mergeStyles(textLeafToStyles({ ...primary.para, ...primary.leaf, text: primary.leaf.text ?? '' }, ctx.typographies), primary.para?.textAlign
             ? decl.textAlign(primary.para.textAlign)
             : '')
         : '';

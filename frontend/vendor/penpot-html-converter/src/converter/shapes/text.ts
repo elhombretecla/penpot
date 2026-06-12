@@ -188,8 +188,13 @@ export function renderText(shape: TextShape, ctx: ConverterContext): string {
   const primary = firstNonEmptyLeaf(shape);
   const typographyStyle = primary
     ? mergeStyles(
-        textLeafToStyles({ text: '', ...primary.para, ...primary.leaf }, ctx.typographies),
-        primary.para?.textAlign ? decl.textAlign(primary.para.textAlign) : '',
+        textLeafToStyles(
+          { ...primary.para, ...primary.leaf, text: primary.leaf.text ?? '' },
+          ctx.typographies,
+        ),
+        primary.para?.textAlign
+          ? decl.textAlign(primary.para.textAlign as Parameters<typeof decl.textAlign>[0])
+          : '',
       )
     : '';
 

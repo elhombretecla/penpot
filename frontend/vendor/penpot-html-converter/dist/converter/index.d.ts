@@ -4,6 +4,7 @@ export { buildPenpotFontsCss } from './utils/fonts';
 export type { BuildPenpotFontsCssOptions } from './utils/fonts';
 export { decl, SUPPORTED_PROPS } from './decl';
 export type { Length, Box4 } from './decl';
+export { extractTokens, tokensToCss, tokenToCssVar, tokenToCssVarName, extractAllTokens, } from './tokens';
 export interface ShapeResult {
     id: string;
     html: string;

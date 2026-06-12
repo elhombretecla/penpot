@@ -1,0 +1,383 @@
+diff -ruN a/src/converter/index.ts b/src/converter/index.ts
+--- a/src/converter/index.ts
++++ b/src/converter/index.ts
+@@ -7,10 +7,19 @@
+ export type { BuildPenpotFontsCssOptions } from './utils/fonts';
+ export { decl, SUPPORTED_PROPS } from './decl';
+ export type { Length, Box4 } from './decl';
++export {
++  extractTokens,
++  tokensToCss,
++  tokenToCssVar,
++  tokenToCssVarName,
++  extractAllTokens,
++} from './tokens';
+ 
++// NOTE: Upstream uses `oxfmt` to pretty-print the HTML when `ctx.format !== false`.
++// The Penpot integration always passes `format: false`, so this helper is a no-op
++// and the `oxfmt` dependency has been removed from the vendored copy.
+ async function formatHtml(html: string): Promise<string> {
+-  const oxfmt = await import('oxfmt');
+-  return (await oxfmt.format('index.html', html)).code;
++  return html;
+ }
+ 
+ export interface ShapeResult {
+diff -ruN a/src/converter/layout/layout-item.ts b/src/converter/layout/layout-item.ts
+--- a/src/converter/layout/layout-item.ts
++++ b/src/converter/layout/layout-item.ts
+@@ -25,10 +25,31 @@
+   let vIsExplicit = false;
+ 
+   if (hSizing === 'fill') {
+-    // Main axis (row → h-fill): flex: 1 to grow within the flow.
+-    // Cross axis (column → h-fill): explicit px to prevent content overflow
+-    // from inflating the flex container's cross-axis size.
+-    parts.push(isRowDir ? decl.flex('1') : decl.width(w));
++    // Main axis (row → h-fill):
++    //   • Non-wrapping parent → `flex: 1` (basis 0) so children share
++    //     the row equally.
++    //   • Wrapping parent → `flex: 1 0 <w>px`. Setting flex-basis to the
++    //     stored width is critical for wrap to behave: with basis 0
++    //     every child "wants" 0 width, fits on one line, and never wraps
++    //     — that's why the previous code piled `width: 100%` on top and
++    //     ended up pushing every child to its own line. With an
++    //     explicit basis the line breaks where Penpot's layout breaks,
++    //     and flex-grow still lets the items stretch to fill each line.
++    //     The duplicated `width: <w>` keeps the position-resolver from
++    //     adding its `width: 100%` fallback.
++    // Cross axis (column → h-fill): explicit px to prevent content
++    // overflow from inflating the flex container's cross-axis size.
++    if (isRowDir) {
++      if (parentWraps) {
++        parts.push(decl.flex(`1 0 ${w}px`));
++        parts.push(decl.width(w));
++      } else {
++        parts.push(decl.flex('1'));
++      }
++    } else {
++      parts.push(decl.width(w));
++      hIsExplicit = true;
++    }
+   } else if (hSizing !== 'auto') {
+     parts.push(decl.width(w));
+     hIsExplicit = true;
+@@ -38,8 +59,14 @@
+     // Cross axis on a wrapping row needs explicit px: `height: 100%` resolves
+     // to the parent's inner height, not the per-line height, so the child
+     // would inflate well beyond the wrapped row Penpot laid it on.
++    // Main axis on a wrapping column (col-dir + v-fill) suffers the
++    // mirror-image bug to wrapping-row + h-fill: use an explicit
++    // basis so wrap breaks land at Penpot's column boundaries.
+     if (isRowDir) {
+       parts.push(parentWraps ? decl.height(h) : decl.height('100%'));
++    } else if (parentWraps) {
++      parts.push(decl.flex(`1 0 ${h}px`));
++      parts.push(decl.height(h));
+     } else {
+       parts.push(decl.flex('1'));
+     }
+diff -ruN a/src/converter/shapes/frame.ts b/src/converter/shapes/frame.ts
+--- a/src/converter/shapes/frame.ts
++++ b/src/converter/shapes/frame.ts
+@@ -116,6 +116,14 @@
+   // to the rounded shape.
+   const shadowRadius = shadowBorderRadiusFromChildren(shape, children);
+ 
++  // `isolation: isolate` forces the frame to create its own stacking
++  // context. Without it, a child with `z-index: -1` would slip past
++  // the frame and paint behind whatever ancestor *does* establish a
++  // stacking context — the classic "z-index: -1 disappears" gotcha.
++  // With it, every Penpot frame matches what designers expect from
++  // the workspace: child stacking stays scoped to that frame.
++  const isolateStyle = 'isolation: isolate;';
++
+   const style = mergeStyles(
+     positionStyle,
+     extraPositionStyle,
+@@ -126,6 +134,7 @@
+     stroke,
+     clipStyle,
+     bgStyle,
++    isolateStyle,
+   );
+ 
+   let inner: string;
+diff -ruN a/src/converter/shapes/text.ts b/src/converter/shapes/text.ts
+--- a/src/converter/shapes/text.ts
++++ b/src/converter/shapes/text.ts
+@@ -68,9 +68,10 @@
+   fillTokenName?: string,
+   tokens?: Map<string, string>,
+   fallbackColor?: string,
++  typographies?: Record<string, Typography>,
+ ): string {
+   const paraLeaf: TextLeaf = { text: '', ...para };
+-  const paraBaseStyle = textLeafToStyles(paraLeaf);
++  const paraBaseStyle = textLeafToStyles(paraLeaf, typographies);
+   const firstLeaf = para.children[0];
+   const paraColorStyle = firstLeaf
+     ? textLeafColorStyle(firstLeaf, fillTokenName, tokens, fallbackColor)
+@@ -81,7 +82,7 @@
+   const inner = hasText
+     ? para.children
+         .map((leaf) => {
+-          const leafBaseStyle = textLeafToStyles(leaf);
++          const leafBaseStyle = textLeafToStyles(leaf, typographies);
+           const leafColorStyle = textLeafColorStyle(leaf, fillTokenName, tokens, fallbackColor);
+           const leafStyle = mergeStyles(leafBaseStyle, leafColorStyle);
+           const escapedText = escapeHtml(leaf.text);
+@@ -120,12 +121,9 @@
+   }
+ }
+ 
+-function collectTextFonts(
+-  shape: TextShape,
+-  ctx: ConverterContext,
+-  typographies?: Record<string, Typography>,
+-): void {
++function collectTextFonts(shape: TextShape, ctx: ConverterContext): void {
+   if (!ctx._fontCollector || !shape.content) return;
++  const typographies = ctx.typographies;
+   for (const set of shape.content.children) {
+     for (const para of set.children) {
+       collectLeafFont({ text: '', ...para }, ctx._fontCollector, typographies);
+@@ -136,6 +134,26 @@
+   }
+ }
+ 
++// Pick the first non-empty text leaf in a shape; used to surface the
++// "primary" typography on the shape's outer element so devtools-style
++// inspectors can read it from the container's inline `style` attribute.
++function firstNonEmptyLeaf(
++  shape: TextShape,
++): { leaf: TextLeaf; para: ParagraphNode } | null {
++  if (!shape.content) return null;
++  for (const set of shape.content.children) {
++    for (const para of set.children) {
++      for (const leaf of para.children) {
++        if (leaf.text !== undefined && leaf.text !== '') return { leaf, para };
++      }
++    }
++  }
++  const firstSet = shape.content.children[0];
++  const firstPara = firstSet?.children?.[0];
++  const firstLeaf = firstPara?.children?.[0];
++  return firstLeaf && firstPara ? { leaf: firstLeaf, para: firstPara } : null;
++}
++
+ export function renderText(shape: TextShape, ctx: ConverterContext): string {
+   collectTextFonts(shape, ctx);
+   const base = baseStyles(shape, ctx);
+@@ -160,24 +178,54 @@
+           )
+         : '';
+ 
++  // Surface the primary typography on the outer text container so
++  // the HTML-Mode sidebar (which reads the clicked element's inline
++  // `style` attribute) shows font-size / font-family / line-height
++  // etc., and not just the layout container's `white-space` etc.
++  // Browsers cascade these onto the inner paragraph / span, which
++  // also carry their own styles, so the visual output is unchanged
++  // for any leaf that defines its own values.
++  const primary = firstNonEmptyLeaf(shape);
++  const typographyStyle = primary
++    ? mergeStyles(
++        textLeafToStyles(
++          { ...primary.para, ...primary.leaf, text: primary.leaf.text ?? '' },
++          ctx.typographies,
++        ),
++        primary.para?.textAlign
++          ? decl.textAlign(primary.para.textAlign as Parameters<typeof decl.textAlign>[0])
++          : '',
++      )
++    : '';
++
+   const style = ctx._parentIsLayout
+-    ? mergeStyles(posStyle, noWrapStyle, verticalAlignStyle, base)
+-    : mergeStyles(posStyle, sizeStyle, noWrapStyle, verticalAlignStyle, base);
++    ? mergeStyles(posStyle, noWrapStyle, verticalAlignStyle, typographyStyle, base)
++    : mergeStyles(posStyle, sizeStyle, noWrapStyle, verticalAlignStyle, typographyStyle, base);
+ 
+   const fillTokenName = shape.appliedTokens?.fill;
+ 
+-  const shapeHasFill = (shape.fills ?? []).some((f) => f.fillColor);
++  // Resolve a fallback colour for leaves that don't carry their own
++  // fill: Penpot designs frequently set a single colour at the shape
++  // level (especially headlines) and the leaves just inherit it.
++  // Without this fallback those leaves render in the browser default
++  // (black on a dark background → invisible). We prefer the shape's
++  // own fill, then fall back to the stroke colour to preserve the
++  // previous behaviour for outline-only text.
++  const shapeFill = (shape.fills ?? []).find((f) => f.fillColor);
++  const shapeFillColor = shapeFill
++    ? hexOpacityToCss(shapeFill.fillColor!, shapeFill.fillOpacity)
++    : undefined;
+   const firstStroke = (shape.strokes ?? [])[0];
+-  const strokeFallbackColor =
+-    !shapeHasFill && firstStroke?.strokeColor
+-      ? hexOpacityToCss(firstStroke.strokeColor, firstStroke.strokeOpacity)
+-      : undefined;
++  const strokeFallbackColor = firstStroke?.strokeColor
++    ? hexOpacityToCss(firstStroke.strokeColor, firstStroke.strokeOpacity)
++    : undefined;
++  const fallbackColor = shapeFillColor ?? strokeFallbackColor;
+ 
+   let inner = '';
+   if (shape.content) {
+     inner = shape.content.children
+       .flatMap((set) => set.children)
+-      .map((para) => renderParagraph(para, fillTokenName, ctx.tokens, strokeFallbackColor))
++      .map((para) => renderParagraph(para, fillTokenName, ctx.tokens, fallbackColor, ctx.typographies))
+       .join('');
+   }
+ 
+diff -ruN a/src/converter/tokens.ts b/src/converter/tokens.ts
+--- a/src/converter/tokens.ts
++++ b/src/converter/tokens.ts
+@@ -1,4 +1,5 @@
+ import type { Shape, TextLeaf, TextShape } from '../penpot.types';
++import { shadowToStyle } from './visual/shadows';
+ 
+ function getFirstTextLeafFill(shape: TextShape): string | undefined {
+   if (!shape.content) return undefined;
+@@ -109,7 +110,9 @@
+   | 'radius'
+   | 'rotation'
+   | 'typography'
+-  | 'stroke';
++  | 'stroke'
++  | 'opacity'
++  | 'shadow';
+ 
+ export interface TokenInfo {
+   /** Raw token name (dots preserved — e.g. "colors.brand.500") */
+@@ -222,10 +225,29 @@
+         ? { category: 'rotation', value: `${n}deg`, numericValue: n }
+         : undefined;
+     }
++    case 'opacity': {
++      const n = shape.opacity;
++      return typeof n === 'number'
++        ? { category: 'opacity', value: String(n), numericValue: n }
++        : undefined;
++    }
++    case 'x':
++    case 'y': {
++      const n = (shape as { x?: number; y?: number })[attribute];
++      const v = pxOrUndefined(n);
++      return v ? { category: 'dimension', value: v, numericValue: n } : undefined;
++    }
++    case 'shadow': {
++      const shadows = shape.shadow;
++      if (!shadows || shadows.length === 0) return undefined;
++      const v = shadows.map(shadowToStyle).filter(Boolean).join(', ');
++      return v ? { category: 'shadow', value: v } : undefined;
++    }
+     case 'fontSize':
+     case 'lineHeight':
+     case 'letterSpacing':
+     case 'fontFamily':
++    case 'fontWeight':
+     case 'textCase':
+     case 'textDecoration': {
+       if (shape.type !== 'text') return undefined;
+@@ -245,6 +267,23 @@
+       }
+       return { category: 'typography', value: str };
+     }
++    case 'typography': {
++      // Composite typography token (the usual way a whole type style is
++      // applied). It has no single CSS value, so we build a readable
++      // preview from the first text leaf — family + size — falling back
++      // to a generic label so the token still surfaces in the inventory.
++      if (shape.type !== 'text') return { category: 'typography', value: 'Typography' };
++      const text = shape as TextShape;
++      const family = findFirstLeaf(text, 'fontFamily');
++      const size = findFirstLeaf(text, 'fontSize');
++      const parts: string[] = [];
++      if (family !== undefined && family !== null && family !== '') parts.push(String(family));
++      if (size !== undefined && size !== null && size !== '') {
++        const asNum = Number(String(size));
++        parts.push(Number.isFinite(asNum) ? `${asNum}px` : String(size));
++      }
++      return { category: 'typography', value: parts.join(' · ') || 'Typography' };
++    }
+     default:
+       return undefined;
+   }
+diff -ruN a/src/converter/types.ts b/src/converter/types.ts
+--- a/src/converter/types.ts
++++ b/src/converter/types.ts
+@@ -43,6 +43,8 @@
+   _fontCollector?: Map<string, FontInfo>;
+   /** Design token map (tokenName → cssColor). Used to emit `var(--token)` instead of raw hex values. */
+   tokens?: Map<string, string>;
++  /** Library typographies keyed by their id; leaves with `typographyRefId` inherit their styles from this map. */
++  typographies?: Record<string, import('../penpot.types').Typography>;
+   /**
+    * Returns the HTML tag to use as the wrapper for a frame / rect / text shape.
+    * Default behaviour (when omitted or returning `undefined`) is `'div'`.
+diff -ruN a/src/converter/utils/html.ts b/src/converter/utils/html.ts
+--- a/src/converter/utils/html.ts
++++ b/src/converter/utils/html.ts
+@@ -6,8 +6,8 @@
+  * Single quotes are intentionally not escaped because all generated attributes
+  * use double-quote delimiters, making single quotes safe inside attribute values.
+  */
+-export function escapeHtml(text: string): string {
+-  return text
++export function escapeHtml(text: unknown): string {
++  return String(text ?? '')
+     .replace(/&/g, '&amp;')
+     .replace(/</g, '&lt;')
+     .replace(/>/g, '&gt;')
+diff -ruN a/src/converter/visual/base.ts b/src/converter/visual/base.ts
+--- a/src/converter/visual/base.ts
++++ b/src/converter/visual/base.ts
+@@ -6,6 +6,23 @@
+ import { shadowsToStyle } from './shadows';
+ import { radiusToStyle } from './radius';
+ import { combinedTransformStyle } from './position';
++import { decl } from '../decl';
++
++// Penpot only models z-index via `:layout-item-z-index`, so we mirror
++// it onto the shape's inline style for every shape — not just those
++// inside a flex/grid layout. That way:
++//   • Shapes inside a layout still get the same `z-index` they did
++//     before (the original `layoutItemZIndexStyle` was redundant with
++//     this; it's still emitted there for compatibility).
++//   • Shapes inside plain frames (where Penpot persists the property
++//     but the previous code dropped it) now expose `z-index` too, so
++//     the HTML inspector shows it AND the painted stacking order
++//     respects it.
++function zIndexStyle(shape: ShapeCommon): string {
++  const z = (shape as ShapeCommon & { layoutItemZIndex?: number }).layoutItemZIndex;
++  if (z === undefined || z === null || z === 0) return '';
++  return decl.zIndex(z);
++}
+ 
+ export function baseStyles(shape: ShapeCommon, _ctx: ConverterContext): string {
+   return mergeStyles(
+@@ -16,5 +33,6 @@
+     radiusToStyle(shape),
+     shadowsToStyle(shape.shadow),
+     combinedTransformStyle(shape),
++    zIndexStyle(shape),
+   );
+ }
+diff -ruN a/src/penpot.types.ts b/src/penpot.types.ts
+--- a/src/penpot.types.ts
++++ b/src/penpot.types.ts
+@@ -472,6 +472,11 @@
+   textCase?: TokenName;
+   textDecoration?: TokenName;
+   strokeWidth?: TokenName;
++  fontWeight?: TokenName;
++  opacity?: TokenName;
++  typography?: TokenName;
++  x?: TokenName;
++  y?: TokenName;
+ }
+ 
+ // ============================================================

@@ -3,8 +3,15 @@ source-commit: 03922f155f738d6ba3944c09f629c3d0a2666875
 source-path: packages/converter/src
 snapshot-date: 2026-05-18
 
-modifications:
-- Removed dynamic `oxfmt` import in src/converter/index.ts (formatHtml is now a no-op).
+modifications (the authoritative record is patches/penpot-local.patch):
+- Applied patches/penpot-local.patch on top of the upstream snapshot. It
+  carries every local modification to vendored files — oxfmt removal in
+  index.ts, wrap-aware flex-basis fixes in layout/layout-item.ts,
+  `isolation: isolate` on frames, typography threading and primary-
+  typography surfacing in shapes/text.ts, extended `extractAllTokens` in
+  tokens.ts, `typographies` in the converter context (types.ts), null-safe
+  `escapeHtml` (utils/html.ts), z-index surfacing (visual/base.ts), and
+  extra applied-token fields (penpot.types.ts).
 - Replaced upstream src/converter/shape-code.ts with a LOCAL TypeScript port
   (maintained in-tree, preserved by scripts/sync-html-converter.sh across
   snapshots). It drops oxfmt and `pageToCode`, validates rule tags against
@@ -17,11 +24,6 @@ modifications:
   app.main.data.html-mode.semantics instead).
 - Dropped all *.test.ts and *.integration.test.ts files (upstream test suite stays in penpot-tools).
 - Wrote a self-contained tsconfig.json targeting ES2022 ESM with declarations.
-- Extended `extractAllTokens` (src/converter/tokens.ts) to resolve every applied
-  token attribute Penpot supports — opacity, shadow, composite typography,
-  fontWeight and x/y — which were previously dropped, and added `opacity`/`shadow`
-  to `TokenCategory`. Only `dist/converter/tokens.*`, `dist/penpot.types.d.ts`
-  and `dist/converter/shape-code.*` were re-emitted (the rest of `dist` is left
-  as-is to avoid reverting unrelated src/dist drift in this snapshot; note that
-  src/converter/shapes/text.ts currently does not type-check under tsc >= 6,
-  so a full re-emit requires fixing that drift first).
+- dist/ is compiled from src/ with the repo's pinned TypeScript
+  (frontend/node_modules/.bin/tsc); src type-checks cleanly and the whole
+  dist/ tree is regenerated in one pass (no partial re-emits).

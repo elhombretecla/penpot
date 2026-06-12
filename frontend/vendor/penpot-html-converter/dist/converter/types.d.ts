@@ -40,6 +40,8 @@ export interface ConverterContext {
     _fontCollector?: Map<string, FontInfo>;
     /** Design token map (tokenName → cssColor). Used to emit `var(--token)` instead of raw hex values. */
     tokens?: Map<string, string>;
+    /** Library typographies keyed by their id; leaves with `typographyRefId` inherit their styles from this map. */
+    typographies?: Record<string, import('../penpot.types').Typography>;
     /**
      * Returns the HTML tag to use as the wrapper for a frame / rect / text shape.
      * Default behaviour (when omitted or returning `undefined`) is `'div'`.
