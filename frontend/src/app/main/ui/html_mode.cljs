@@ -94,7 +94,7 @@
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :as i]
    [app.main.ui.ds.product.loader :refer [loader*]]
-   [app.main.ui.html-mode.components :refer [components-view*]]
+   [app.main.ui.html-mode.components :refer [components-view* bg-swatches*]]
    [app.main.ui.html-mode.design-tokens :refer [design-tokens-view*]]
    [app.main.ui.html-mode.device-view :refer [device-view-controls*]]
    [app.main.ui.html-mode.export-modal]
@@ -386,6 +386,12 @@
                                     :interaction   :mouse
                                     :mockup?       false
                                     :bg-color      nil})
+        ;; Workspace-tab background override. Mirrors the Components
+        ;; view's preview backdrop picker: recolors the page background
+        ;; shown in the Workspace iframe. nil = use the page's own
+        ;; background. Lives here (session only) so it survives mode
+        ;; switches and resets on reload.
+        workspace-bg* (mf/use-state nil)
         ;; `html-mode` is `:workspace` (default), `:prototype`,
         ;; `:design-tokens` or `:components`. It comes from the URL
         ;; `?mode=` query param so the selection is shareable; the
@@ -444,8 +450,11 @@
         {:keys [status html error updated-at]} (deref state*)
         {:keys [current-frame-id overlays transition]} (deref proto-state*)
         device-view  (deref device-view*)
+        workspace-bg (deref workspace-bg*)
         on-device-view-change
         (mf/use-fn (fn [m] (swap! device-view* merge m)))
+        on-workspace-bg-change
+        (mf/use-fn (fn [hex] (reset! workspace-bg* hex)))
         _ (mf/set-ref-val! proto-live* (deref proto-state*))
         _ (mf/set-ref-val! state-html* html)
         selected (deref selected*)
@@ -704,7 +713,7 @@
     ;; picked board via `render-board-html` and wraps it in a runtime-
     ;; equipped iframe document so click/hover/after-delay interactions
     ;; fire.
-    (mf/with-effect [file page mode current-frame-id]
+    (mf/with-effect [file page mode current-frame-id workspace-bg]
       (let [cancelled? (volatile! false)
             on-error
             (fn [^js err]
@@ -780,11 +789,20 @@
             (-> (render-page-html-cached file page)
                 (.then (fn [parts]
                          (when-not @cancelled?
-                           (reset! state*
-                                   {:status     :ready
-                                    :html       (pdoc/build-document parts page)
-                                    :error      nil
-                                    :updated-at (js/Date.now)}))))
+                           ;; Apply the Workspace background override (if
+                           ;; any) at document-assembly time. The cached
+                           ;; converter output is background-independent —
+                           ;; `pdoc/build-document` reads the page's
+                           ;; `[:options :background]` — so swapping colors
+                           ;; never thrashes `render-page-html-cached`.
+                           (let [doc-page (cond-> page
+                                            (some? workspace-bg)
+                                            (assoc-in [:options :background] workspace-bg))]
+                             (reset! state*
+                                     {:status     :ready
+                                      :html       (pdoc/build-document parts doc-page)
+                                      :error      nil
+                                      :updated-at (js/Date.now)})))))
                 (.catch on-error))))
         (fn [] (vreset! cancelled? true))))
 
@@ -1033,7 +1051,13 @@
          [:> device-view-controls*
           {:settings device-view
            :default-dims (proto/board-dims (or (proto/find-frame-by-id-str page current-frame-id) frame))
-           :on-change on-device-view-change}])]
+           :on-change on-device-view-change}])
+       ;; Workspace tab: background-color picker reusing the Components
+       ;; view's swatch control, so the user can preview the page against
+       ;; light / dark backdrops just like in the Components browser.
+       (when (= mode :workspace)
+         [:> bg-swatches* {:selected workspace-bg
+                           :on-change on-workspace-bg-change}])]
 
       (cond
         ;; Design Tokens mode renders its own panel layout (left sub-

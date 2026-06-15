@@ -258,6 +258,12 @@
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 }
 
+// Rows view: a single full-width column so every token reads as one
+// row. Wins over `.token-grid-colors` because it is declared later.
+.token-grid-rows {
+  grid-template-columns: 1fr;
+}
+
 // ---------------------------------------------------------------------------
 // Token card
 //
@@ -271,8 +277,15 @@
 .token-card {
   display: grid;
   grid-template-columns: auto 1fr auto;
+  // `.token-meta` is a direct child of the card (not nested in the
+  // body) so it can be repositioned per view via grid areas: in the
+  // card it sits under the body; in the row view it moves to the right.
+  grid-template-areas:
+    "preview body    actions"
+    "preview meta    meta";
   align-items: flex-start;
-  gap: var(--sp-s);
+  column-gap: var(--sp-s);
+  row-gap: var(--sp-xs);
   inline-size: 100%;
   background-color: var(--color-background-primary);
   border: 1px solid var(--color-background-secondary);
@@ -285,6 +298,10 @@
   &:hover {
     border-color: var(--color-accent-tertiary);
   }
+
+  .token-preview {
+    grid-area: preview;
+  }
 }
 
 // Variant used by the "Used by" sub-view: shows the picked token as
@@ -292,6 +309,9 @@
 // left sidebar.
 .token-card-static {
   grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "preview body"
+    "preview meta";
   border-color: var(--color-accent-tertiary);
 
   &:hover {
@@ -299,7 +319,38 @@
   }
 }
 
+// Rows view: a single horizontal line — swatch, name + value inline,
+// then the attribute chips and usage pushed to the right, with the
+// kebab on the far edge.
+.token-card-row {
+  grid-template-columns: auto 1fr auto auto;
+  grid-template-areas: "preview body meta actions";
+  align-items: center;
+  column-gap: var(--sp-m);
+  row-gap: 0;
+
+  // Keep the swatch the same height as the card preview ($sz-48) so the
+  // per-category inner shapes (radius box, stroke bar, etc.) keep their
+  // breathing room — only widen it so colors read as a proper swatch.
+  .token-preview {
+    inline-size: $sz-64;
+    block-size: $sz-48;
+  }
+
+  .token-body {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--sp-s);
+  }
+
+  .token-meta {
+    margin-block-start: 0;
+    justify-content: flex-end;
+  }
+}
+
 .token-body {
+  grid-area: body;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -307,6 +358,7 @@
 }
 
 .token-card-actions {
+  grid-area: actions;
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
@@ -353,6 +405,7 @@
 }
 
 .token-meta {
+  grid-area: meta;
   display: flex;
   flex-wrap: wrap;
   align-items: center;

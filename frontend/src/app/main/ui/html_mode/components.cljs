@@ -435,8 +435,9 @@
 
 (def ^:private default-bg "#e8e9ea")
 
+;; Public so HTML Mode's Workspace toolbar can reuse the exact same
+;; control (see `app.main.ui.html-mode` → `:workspace` background picker).
 (mf/defc bg-swatches*
-  {::mf/private true}
   [{:keys [selected on-change]}]
   [:div {:class (stl/css :bg-color)
          :role "radiogroup"

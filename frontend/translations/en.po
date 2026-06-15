@@ -6711,6 +6711,14 @@ msgid "viewer.html-mode.design-tokens.tokens"
 msgstr "tokens"
 
 #: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.view.rows"
+msgstr "Rows view"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
+msgid "viewer.html-mode.design-tokens.view.cards"
+msgstr "Cards view"
+
+#: src/app/main/ui/viewer/html_mode/design_tokens.cljs
 msgid "viewer.html-mode.design-tokens.copy-all"
 msgstr "Copy all"
 

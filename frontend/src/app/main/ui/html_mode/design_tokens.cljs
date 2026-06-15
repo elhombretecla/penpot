@@ -38,6 +38,7 @@
    [app.main.data.notifications :as ntf]
    [app.main.store :as st]
    [app.main.ui.components.context-menu-a11y :refer [context-menu*]]
+   [app.main.ui.components.radio-buttons :refer [radio-button radio-buttons]]
    [app.main.ui.components.search-bar :refer [search-bar*]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :refer [icon*] :as i]
@@ -241,8 +242,13 @@
 
 (mf/defc token-card*
   {::mf/private true}
-  [{:keys [token format static? on-show-usage]}]
+  [{:keys [token format static? on-show-usage view]}]
   (let [{:keys [name attributes usage]} token
+        ;; "rows" lays each token out as a full-width row (the default
+        ;; Design Tokens view); "cards" keeps the original grid card.
+        ;; The DOM is identical for both — only the class differs and
+        ;; the layout is driven entirely from CSS (see `.token-card-row`).
+        rows? (= view "rows")
         rendered (display-value token format)
 
         ;; Static cards are the read-only variant used in the "Used
@@ -311,6 +317,7 @@
             :handler on-usage-click}])]
     [:div {:class (stl/css-case
                    :token-card true
+                   :token-card-row rows?
                    :token-card-static static?
                    :token-card-menu-open (some? menu-pos))
            :data-category (clojure.core/name (:category token))
@@ -318,12 +325,12 @@
      [:> token-preview* {:token token}]
      [:div {:class (stl/css :token-body)}
       [:p {:class (stl/css :token-name)} name]
-      [:p {:class (stl/css :token-value)} rendered]
-      [:div {:class (stl/css :token-meta)}
-       (for [a attributes]
-         [:span {:key a :class (stl/css :token-attr-tag)} a])
-       [:span {:class (stl/css :token-usage)}
-        (tr "viewer.html-mode.design-tokens.used-times" (str usage))]]]
+      [:p {:class (stl/css :token-value)} rendered]]
+     [:div {:class (stl/css :token-meta)}
+      (for [a attributes]
+        [:span {:key a :class (stl/css :token-attr-tag)} a])
+      [:span {:class (stl/css :token-usage)}
+       (tr "viewer.html-mode.design-tokens.used-times" (str usage))]]
      (when-not static?
        [:div {:class (stl/css :token-card-actions)}
         [:> icon-button* {:variant "ghost"
@@ -565,6 +572,12 @@
         search     (deref search*)
         format*    (mf/use-state {:color :hex :unit :px})
         format     (deref format*)
+        ;; Preview layout: "rows" (default) renders each token as a
+        ;; full-width row; "cards" is the original grid of cards. Toggled
+        ;; via the list/grid switch in the Preview header, reusing the
+        ;; same radio-buttons control as the workspace assets panel.
+        view*      (mf/use-state "rows")
+        view       (deref view*)
         copied*    (mf/use-state false)
         copied     (deref copied*)
         ;; When non-nil, the whole view switches to the "Used by"
@@ -620,6 +633,9 @@
 
         on-format-change
         (mf/use-fn (fn [next] (reset! format* next)))
+
+        on-view-change
+        (mf/use-fn (fn [v _] (reset! view* v)))
 
         on-sub-tab-change
         (mf/use-fn (fn [t] (reset! sub-tab* t)))
@@ -729,6 +745,19 @@
             [:> format-picker* {:color (:color format)
                                 :unit (:unit format)
                                 :on-change on-format-change}]
+            ;; List/grid view switch — same radio-buttons control and
+            ;; icons used by the workspace assets panel.
+            [:& radio-buttons {:selected view
+                               :on-change on-view-change
+                               :name "design-tokens-view"}
+             [:& radio-button {:icon i/view-as-list
+                               :value "rows"
+                               :title (tr "viewer.html-mode.design-tokens.view.rows")
+                               :id "design-tokens-view-rows"}]
+             [:& radio-button {:icon i/flex-grid
+                               :value "cards"
+                               :title (tr "viewer.html-mode.design-tokens.view.cards")
+                               :id "design-tokens-view-cards"}]]
             [:span {:class (stl/css :counter)}
              (str (count filtered) " / " (count tokens) " "
                   (tr "viewer.html-mode.design-tokens.tokens"))]]
@@ -753,11 +782,13 @@
                     (count items)]]
                   [:div {:class (stl/css-case
                                  :token-grid true
-                                 :token-grid-colors (= cat :color))}
+                                 :token-grid-colors (= cat :color)
+                                 :token-grid-rows (= view "rows"))}
                    (for [t items]
                      [:> token-card* {:key (:name t)
                                       :token t
                                       :format format
+                                      :view view
                                       :on-show-usage on-show-usage}])]]))]]]
 
           "code"
