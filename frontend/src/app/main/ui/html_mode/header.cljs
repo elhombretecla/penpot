@@ -23,12 +23,15 @@
    [app.common.data.macros :as dm]
    [app.main.data.common :as dcm]
    [app.main.data.html-mode :as dhtml]
+   [app.main.data.html-mode.prototype :as proto]
    [app.main.data.modal :as modal]
    [app.main.router :as rt]
    [app.main.store :as st]
    [app.main.ui.components.dropdown :refer [dropdown]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :as i]
+   [app.main.ui.html-mode.components :refer [bg-swatches*]]
+   [app.main.ui.html-mode.device-view :refer [device-view-controls*]]
    [app.main.ui.html-mode.refs :as hrefs]
    [app.main.ui.icons :as deprecated-icon]
    [app.main.ui.share-link]
@@ -175,8 +178,32 @@
         ;; The zoom container only wraps the iframe-driven sections.
         zoomable? (or (= mode :workspace) (= mode :prototype))
 
+        ;; Preview-background picker (Workspace + Components tabs). The
+        ;; selection lives in mode-local state so it can be driven from
+        ;; the header while the actual preview is rendered elsewhere.
+        bg-tab?    (or (= mode :workspace) (= mode :components))
+        preview-bg (mf/deref (if (= mode :components)
+                               hrefs/components-bg
+                               hrefs/workspace-bg))
+
         on-refresh
         (mf/use-fn #(st/emit! (dhtml/refresh-bundle)))
+
+        on-bg-change
+        (mf/use-fn
+         (mf/deps mode)
+         (fn [hex]
+           (st/emit! (dhtml/set-preview-bg
+                      (if (= mode :components) :components :workspace)
+                      hex))))
+
+        ;; Device-view controls (Prototype tab) sit next to the Zoom
+        ;; widget. Settings are held in mode-local state and consumed by
+        ;; the section for board sizing / touch mode / stage background.
+        device-view (mf/deref hrefs/device-view)
+
+        on-device-view-change
+        (mf/use-fn (fn [m] (st/emit! (dhtml/update-device-view m))))
 
         go-dashboard
         (mf/use-fn
@@ -210,10 +237,13 @@
                 :aria-label (tr "labels.dashboard")}
        penpot-logo-icon]
       [:> page-dropdown* {:file file :page page}]
-      ;; Refresh sits right after the file breadcrumb in every tab. It
-      ;; re-fetches the bundle; the glyph spins + the button disables
-      ;; while the section is fetching / converting (mirrored into
-      ;; mode-local state via `hrefs/busy?`).
+      ;; Prototype's board picker sits between the breadcrumb and Refresh.
+      (when (= mode :prototype)
+        [:> board-picker* {:frames frames :frame frame}])
+      ;; Refresh is the rightmost item of the left cluster in every tab
+      ;; (after the board picker in Prototype). It re-fetches the bundle;
+      ;; the glyph spins + the button disables while the section is
+      ;; fetching / converting (mirrored via `hrefs/busy?`).
       [:> icon-button* {:variant "ghost"
                         :icon i/reload
                         :class (stl/css :refresh-btn)
@@ -221,15 +251,24 @@
                         :on-click on-refresh
                         :disabled busy?
                         :aria-label (tr "viewer.html-mode.toolbar.refresh")
-                        :title (tr "viewer.html-mode.toolbar.refresh")}]
-      (when (= mode :prototype)
-        [:> board-picker* {:frames frames :frame frame}])]
+                        :title (tr "viewer.html-mode.toolbar.refresh")}]]
 
      [:> mode-zone* {:mode mode}]
 
      [:div {:class (stl/css :right-zone)}
       (when zoomable?
         [:> zoom-widget* {:zoom zoom}])
+      ;; Device-view controls live right next to Zoom, on the Prototype
+      ;; tab (the only one with a resizable board).
+      (when (= mode :prototype)
+        [:> device-view-controls* {:settings device-view
+                                   :default-dims (proto/board-dims frame)
+                                   :on-change on-device-view-change}])
+      ;; Background picker sits just left of Share, on the tabs whose
+      ;; preview has a recolorable backdrop (Workspace + Components).
+      (when bg-tab?
+        [:> bg-swatches* {:selected preview-bg
+                          :on-change on-bg-change}])
       (when (:in-team permissions)
         [:button {:class (stl/css :share-btn)
                   :on-click open-share-dialog}

@@ -84,22 +84,6 @@
   block-size: 100%;
 }
 
-.preview-toolbar {
-  // Right-aligned bar for the per-mode preview controls (device-view in
-  // Prototype, background picker in Workspace). Refresh moved to the
-  // page header (next to the breadcrumb) and the section switcher lives
-  // in the header's mode-zone, so this bar only carries the trailing
-  // controls now.
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--sp-s);
-  padding-block: var(--sp-xs);
-  padding-inline: var(--sp-s);
-  border-block-end: 1px solid var(--color-border-primary);
-  border-bottom: 1px solid var(--color-background-secondary);
-}
-
 .preview-iframe {
   flex: 1;
   inline-size: 100%;

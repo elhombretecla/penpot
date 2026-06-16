@@ -92,9 +92,8 @@
    [app.main.router :as rt]
    [app.main.store :as st]
    [app.main.ui.ds.product.loader :refer [loader*]]
-   [app.main.ui.html-mode.components :refer [components-view* bg-swatches*]]
+   [app.main.ui.html-mode.components :refer [components-view*]]
    [app.main.ui.html-mode.design-tokens :refer [design-tokens-view*]]
-   [app.main.ui.html-mode.device-view :refer [device-view-controls*]]
    [app.main.ui.html-mode.export-modal]
    [app.main.ui.html-mode.header :refer [header*]]
    [app.main.ui.html-mode.layers-tree :refer [layers-tree*]]
@@ -373,23 +372,6 @@
                                     :nav-stack        []
                                     :overlays         []
                                     :transition       nil})
-        ;; Device-view settings (PROTOTYPING tab only). Pure visualization
-        ;; layer: overrides the board-stack size, toggles a touch cursor /
-        ;; device mockup, and recolors the preview stage. Lives here (not in
-        ;; `state*`) so the chosen size survives board navigations; session
-        ;; only — it resets on reload. `:size-override` nil means "use the
-        ;; board's design size".
-        device-view* (mf/use-state {:size-override nil
-                                    :preset-name   nil
-                                    :interaction   :mouse
-                                    :mockup?       false
-                                    :bg-color      nil})
-        ;; Workspace-tab background override. Mirrors the Components
-        ;; view's preview backdrop picker: recolors the page background
-        ;; shown in the Workspace iframe. nil = use the page's own
-        ;; background. Lives here (session only) so it survives mode
-        ;; switches and resets on reload.
-        workspace-bg* (mf/use-state nil)
         ;; `html-mode` is `:workspace` (default), `:prototype`,
         ;; `:design-tokens` or `:components`. It comes from the URL
         ;; `?mode=` query param so the selection is shareable; the
@@ -447,12 +429,15 @@
         state-html*   (mf/use-ref nil)
         {:keys [status html error updated-at]} (deref state*)
         {:keys [current-frame-id overlays transition]} (deref proto-state*)
-        device-view  (deref device-view*)
-        workspace-bg (deref workspace-bg*)
-        on-device-view-change
-        (mf/use-fn (fn [m] (swap! device-view* merge m)))
-        on-workspace-bg-change
-        (mf/use-fn (fn [hex] (reset! workspace-bg* hex)))
+        ;; Device-view settings (Prototype tab). The controls live in the
+        ;; header now (next to Zoom); the value is held in mode-local
+        ;; state and read here for board sizing, touch mode and the stage
+        ;; background.
+        device-view  (mf/deref hrefs/device-view)
+        ;; Workspace preview background override (nil = page's own bg).
+        ;; The picker lives in the header now (next to Share); the value
+        ;; is held in mode-local state and read here for the render.
+        workspace-bg (mf/deref hrefs/workspace-bg)
         _ (mf/set-ref-val! proto-live* (deref proto-state*))
         _ (mf/set-ref-val! state-html* html)
         selected (deref selected*)
@@ -1028,27 +1013,10 @@
                          :selected selected
                          :on-select handle-tree-select}])
      [:div {:class (stl/css :preview-pane)}
-      ;; Toolbar holds the per-mode preview controls (right-aligned).
-      ;; The Refresh button moved to the page header (next to the file
-      ;; breadcrumb), and the section switcher lives in the header's
-      ;; mode-zone — so this toolbar only renders for the modes that
-      ;; still have controls: Prototype (device-view) and Workspace
-      ;; (background picker). Design Tokens / Components bring their own
-      ;; layout and would otherwise show an empty strip.
-      (when (or (= mode :prototype) (= mode :workspace))
-        [:div {:class (stl/css :preview-toolbar)}
-         (when (= mode :prototype)
-           [:> device-view-controls*
-            {:settings device-view
-             :default-dims (proto/board-dims (or (proto/find-frame-by-id-str page current-frame-id) frame))
-             :on-change on-device-view-change}])
-         ;; Workspace tab: background-color picker reusing the Components
-         ;; view's swatch control, so the user can preview the page
-         ;; against light / dark backdrops like in the Components browser.
-         (when (= mode :workspace)
-           [:> bg-swatches* {:selected workspace-bg
-                             :on-change on-workspace-bg-change}])])
-
+      ;; The section toolbar is gone: Refresh + section switcher + the
+      ;; background picker + the Prototype device-view controls all live
+      ;; in the page header now, so the preview pane goes straight to the
+      ;; content.
       (cond
         ;; Design Tokens mode renders its own panel layout (left sub-
         ;; sidebar with sub-tabs + main content area), so it bypasses

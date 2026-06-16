@@ -29,3 +29,19 @@
    the header's Refresh button spinner + disabled state (the button is
    rendered in the header, outside the section that owns the status)."
   (l/derived (comp boolean :busy? :html-mode-local) st/state))
+
+(def workspace-bg
+  "Preview background override for the Workspace tab (nil = the page's
+   own background). The picker lives in the header, next to Share."
+  (l/derived (comp :workspace-bg :html-mode-local) st/state))
+
+(def components-bg
+  "Preview background for the Components tab. The picker lives in the
+   header, next to Share."
+  (l/derived (comp :components-bg :html-mode-local) st/state))
+
+(def device-view
+  "Device-view settings for the Prototype tab. The controls live in the
+   header (next to Zoom); the section reads this for board sizing, touch
+   mode and the stage background."
+  (l/derived (comp :device-view :html-mode-local) st/state))

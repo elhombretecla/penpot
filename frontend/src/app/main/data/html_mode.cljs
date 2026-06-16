@@ -32,7 +32,19 @@
 ;; Local state
 
 (def ^:private default-local-state
-  {:zoom 1})
+  ;; `:components-bg` defaults to the light preview backdrop so component
+  ;; previews stay readable; `:workspace-bg` is intentionally absent (nil
+  ;; → no override, so the Workspace iframe shows the page's own
+  ;; background).
+  {:zoom 1
+   :components-bg "#e8e9ea"
+   ;; Device-view settings (Prototype tab). The controls live in the
+   ;; page header now (next to Zoom), so the settings are held here.
+   :device-view {:size-override nil
+                 :preset-name   nil
+                 :interaction   :mouse
+                 :mockup?       false
+                 :bg-color      nil}})
 
 ;; ---------------------------------------------------------------------------
 ;; Bundle lifecycle
@@ -146,6 +158,31 @@
     ptk/UpdateEvent
     (update [_ state]
       (assoc-in state [:html-mode-local :busy?] (boolean busy?)))))
+
+(defn set-preview-bg
+  "Set the preview background color for a given HTML Mode tab. The bg
+   picker now lives in the page header (next to Share) for both the
+   Workspace and Components tabs, so the selection is held in mode-local
+   state rather than each section's local component state. `target` is
+   `:workspace` or `:components`."
+  [target hex]
+  (ptk/reify ::set-preview-bg
+    ptk/UpdateEvent
+    (update [_ state]
+      (let [k (case target
+                :workspace :workspace-bg
+                :components :components-bg)]
+        (assoc-in state [:html-mode-local k] hex)))))
+
+(defn update-device-view
+  "Merge a partial device-view settings map into mode-local state. The
+   Prototype device-view controls live in the page header (next to
+   Zoom), so the settings are held here rather than in the section."
+  [m]
+  (ptk/reify ::update-device-view
+    ptk/UpdateEvent
+    (update [_ state]
+      (update-in state [:html-mode-local :device-view] merge m))))
 
 ;; ---------------------------------------------------------------------------
 ;; Zoom

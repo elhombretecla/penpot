@@ -32,6 +32,7 @@
    [app.main.ui.ds.foundations.assets.icon :refer [icon*] :as i]
    [app.main.ui.html-mode.design-tokens :as dt]
    [app.main.ui.html-mode.preview-doc :as pdoc]
+   [app.main.ui.html-mode.refs :as hrefs]
    [app.main.ui.html-mode.sidebar :refer [format-picker* section-disclosure*]]
    [app.util.clipboard :as clipboard]
    [app.util.code-beautify :as cb]
@@ -466,8 +467,10 @@
         search    (deref search*)
         format*   (mf/use-state {:color :hex :unit :px})
         format    (deref format*)
-        bg-color* (mf/use-state default-bg)
-        bg-color  (deref bg-color*)
+        ;; Preview backdrop color. The picker moved to the page header
+        ;; (next to Share); the value is held in mode-local state. Fall
+        ;; back to `default-bg` until the store value is initialized.
+        bg-color  (or (mf/deref hrefs/components-bg) default-bg)
         layout-mode* (mf/use-state :rows)
         layout-mode  (deref layout-mode*)
 
@@ -567,7 +570,6 @@
         on-format-change    (mf/use-fn (fn [next] (reset! format* next)))
         on-code-format      (mf/use-fn (fn [v] (reset! code-format* v)))
         on-code-styling     (mf/use-fn (fn [v] (reset! code-styling* v)))
-        on-bg-change        (mf/use-fn (fn [id] (reset! bg-color* id)))
         on-toggle-layout    (mf/use-fn
                              (fn [_]
                                (swap! layout-mode* #(if (= % :rows) :columns :rows))))
@@ -611,9 +613,9 @@
                 [:h2 {:class (stl/css :detail-title)} comp-name]
                 (when (not (str/blank? (:path selected-set)))
                   [:span {:class (stl/css :detail-path)} (:path selected-set)])]
+               ;; The background picker moved to the page header (next to
+               ;; Share); only the rows/columns layout toggle remains here.
                [:div {:class (stl/css :detail-actions)}
-                [:> bg-swatches* {:selected bg-color
-                                  :on-change on-bg-change}]
                 [:> icon-button* {:variant "secondary"
                                   :icon i/layout-panel-top
                                   :icon-size "s"
