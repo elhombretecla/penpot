@@ -7,6 +7,7 @@
 @use "ds/_borders.scss" as *;
 @use "ds/_sizes.scss" as *;
 @use "ds/typography.scss" as t;
+@use "ds/mixins.scss" as *;
 
 // `.device-view` is a direct child of `.preview-toolbar`'s 1fr/auto/1fr
 // grid, so it owns the right-zone placement (mirrors `.refresh-btn` on
@@ -108,6 +109,8 @@
 }
 
 .preset-list {
+  @include custom-scrollbar;
+
   flex: 1 1 auto;
   min-block-size: 0;
   overflow-y: auto;

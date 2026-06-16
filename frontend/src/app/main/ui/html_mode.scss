@@ -6,6 +6,7 @@
 
 @use "ds/_sizes.scss" as *;
 @use "ds/typography.scss" as t;
+@use "ds/mixins.scss" as *;
 
 // Standalone page layout: fixed-height header on top, the section
 // filling the rest of the viewport.
@@ -84,43 +85,19 @@
 }
 
 .preview-toolbar {
-  // Two-zone bar: refresh on the left, device-view controls (when the
-  // Prototype section shows them) on the right. The section switcher
-  // that used to sit centred here now lives in the page header's
-  // mode-zone.
-  display: grid;
-  grid-template-columns: 1fr auto;
+  // Right-aligned bar for the per-mode preview controls (device-view in
+  // Prototype, background picker in Workspace). Refresh moved to the
+  // page header (next to the breadcrumb) and the section switcher lives
+  // in the header's mode-zone, so this bar only carries the trailing
+  // controls now.
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--sp-s);
   padding-block: var(--sp-xs);
   padding-inline: var(--sp-s);
   border-block-end: 1px solid var(--color-border-primary);
   border-bottom: 1px solid var(--color-background-secondary);
-}
-
-// `icon-button*` already brings the DS look; the only override we
-// need here is the placement: refresh sits in the left grid track.
-.refresh-btn {
-  justify-self: start;
-}
-
-// Spin animation applied to the reload glyph while a refresh is in
-// flight. We target the inner `<svg>` (the DS icon* passes
-// `icon-class` straight onto it) so the surrounding button chrome
-// stays still and only the icon rotates.
-.refresh-icon-spinning {
-  animation: html-mode-refresh-spin 0.8s linear infinite;
-  transform-origin: center;
-}
-
-@keyframes html-mode-refresh-spin {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .preview-iframe {
@@ -163,6 +140,8 @@
 // here. In prototype mode the `[data-mode="prototype"]` block above
 // adds centring + the neutral background that surrounds the board.
 .preview-stage {
+  @include custom-scrollbar;
+
   position: relative;
   flex: 1;
   inline-size: 100%;

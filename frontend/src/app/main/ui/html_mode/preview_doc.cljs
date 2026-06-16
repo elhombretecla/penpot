@@ -131,6 +131,36 @@
                           (js/console.warn "Preview font CSS failed:" err)
                           (resolve "")))))))))
 
+(def ^:private scrollbar-css
+  "Inline scrollbar styling for the preview iframes, mirroring the DS
+   `custom-scrollbar` mixin (`frontend/.../ds/mixins.scss`, defaults:
+   thin 12px track, #aab5ba4d thumb → #aab5bab3 on hover, 8px radius,
+   2px transparent inner border). Each iframe is a separate document so
+   the app stylesheet can't reach into it — we inline the equivalent
+   rules here so the canvas scrollbars match the rest of Penpot."
+  (str
+   "  *{scrollbar-width:thin;scrollbar-color:#aab5ba4d transparent;}\n"
+   "  ::-webkit-scrollbar{width:12px;height:12px;background:transparent;}\n"
+   "  ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent;}\n"
+   "  ::-webkit-scrollbar-thumb{background-color:#aab5ba4d;background-clip:content-box;border:2px solid transparent;border-radius:8px;}\n"
+   "  ::-webkit-scrollbar-thumb:hover{background-color:#aab5bab3;}\n"))
+
+(def ^:private scrollbar-css-subtle
+  "A more discreet scrollbar for the Workspace canvas. Same geometry as
+   `scrollbar-css`, but a much more transparent thumb. The Prototype
+   canvas scrollbar lives on the dark app stage (`.preview-stage`), so
+   the standard `rgb(170 181 186 / 0.3)` thumb reads as faint there. The
+   Workspace scrollbar instead lives INSIDE the iframe, over the page's
+   own (often light) background, where that same grey looks heavier — so
+   we lower the alpha (0.16 resting → 0.4 hover) to keep the same subtle
+   feel as the Prototype tab regardless of the page background."
+  (str
+   "  *{scrollbar-width:thin;scrollbar-color:rgba(170,181,186,0.16) transparent;}\n"
+   "  ::-webkit-scrollbar{width:12px;height:12px;background:transparent;}\n"
+   "  ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent;}\n"
+   "  ::-webkit-scrollbar-thumb{background-color:rgba(170,181,186,0.16);background-clip:content-box;border:2px solid transparent;border-radius:8px;}\n"
+   "  ::-webkit-scrollbar-thumb:hover{background-color:rgba(170,181,186,0.4);}\n"))
+
 (defn build-static-doc
   "Assemble the HTML document for a non-interactive preview iframe.
    Includes `@font-face` rules so text shapes render with their real
@@ -174,6 +204,7 @@
      "  body { min-block-size: 100vh; min-inline-size: 100vw; background: " bg "; "
      "display: grid; place-content: safe center; padding: 24px; "
      "overflow: auto; user-select: none; pointer-events: none; }\n"
+     scrollbar-css
      "  @keyframes penpot-token-pulse {\n"
      "    0%   { box-shadow: 0 0 0 0    rgba(140, 51, 235, 0.85); }\n"
      "    70%  { box-shadow: 0 0 0 22px rgba(140, 51, 235, 0); }\n"
@@ -245,11 +276,17 @@
      ;; keep the shape's computed line-height in place; instead we
      ;; just collapse the default block margins.
      "  p, h1, h2, h3, h4, h5, h6, ul, ol, dl, li, dd, blockquote, figure, pre { margin: 0; padding: 0; }\n"
-     ;; `overflow: hidden` keeps the panned/zoomed canvas from spawning
-     ;; native scrollbars; navigation is fully driven by the pan/zoom
-     ;; bridge handlers below. `user-select: none` avoids text drags
-     ;; while space-panning.
-     "  body { min-block-size: 100vh; background: " bg "; display: flex; justify-content: center; align-items: center; padding: 24px; overflow: hidden; user-select: none; }\n"
+     ;; `overflow: auto` lets the user scroll the canvas natively
+     ;; (wheel + scrollbars) when the rendered page is larger than the
+     ;; viewport — the pan/zoom bridge below still works on top of it
+     ;; (space / middle-drag pan, ctrl+wheel zoom; plain wheel falls
+     ;; through to native scroll). `display: grid; place-content: safe
+     ;; center` centres the canvas when it fits AND keeps the overflow
+     ;; reachable when it doesn't — `flex` centring would clip the
+     ;; top/left and make them unscrollable. `user-select: none` avoids
+     ;; text drags while space-panning.
+     "  body { min-block-size: 100vh; min-inline-size: 100vw; background: " bg "; display: grid; place-content: safe center; padding: 24px; overflow: auto; user-select: none; }\n"
+     scrollbar-css-subtle
      "</style>\n"
      "</head>\n"
      "<body>\n"

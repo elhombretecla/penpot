@@ -23,3 +23,9 @@
 
 (def zoom
   (l/derived (comp :zoom :html-mode-local) st/state))
+
+(def busy?
+  "True while the section is fetching / converting the preview. Drives
+   the header's Refresh button spinner + disabled state (the button is
+   rendered in the header, outside the section that owns the status)."
+  (l/derived (comp boolean :busy? :html-mode-local) st/state))

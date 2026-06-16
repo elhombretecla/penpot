@@ -91,8 +91,6 @@
    [app.main.data.html-mode.prototype :as proto]
    [app.main.router :as rt]
    [app.main.store :as st]
-   [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
-   [app.main.ui.ds.foundations.assets.icon :as i]
    [app.main.ui.ds.product.loader :refer [loader*]]
    [app.main.ui.html-mode.components :refer [components-view* bg-swatches*]]
    [app.main.ui.html-mode.design-tokens :refer [design-tokens-view*]]
@@ -468,12 +466,6 @@
         ;; surrounding `.preview-stage`'s `overflow: auto` correctly
         ;; engages when zoomed past 100%.
         zoom         (or (mf/deref hrefs/zoom) 1)
-
-        request-refresh
-        (mf/use-fn
-         (fn []
-           (mf/set-ref-val! last-refresh* (js/Date.now))
-           (st/emit! (dhtml/refresh-bundle))))
 
         ;; Click on the pane background (outside the board) while in
         ;; prototype mode: flash the pulse highlight on every shape that
@@ -929,6 +921,14 @@
             (when-let [r @raf]
               (js/cancelAnimationFrame r))))))
 
+    ;; Mirror the conversion/loading status into mode-local state so the
+    ;; header's Refresh button — rendered next to the file breadcrumb,
+    ;; outside this section — can show its in-flight spinner + disabled
+    ;; state. Cleared on unmount so a stale spinner never carries over.
+    (mf/with-effect [status]
+      (st/emit! (dhtml/set-busy (= status :loading)))
+      (fn [] (st/emit! (dhtml/set-busy false))))
+
     ;; Auto-refresh when the HTML Mode window regains visibility, but
     ;; only if it has been more than `auto-refresh-throttle-ms` since the
     ;; last refresh — quick alt-tab cycles should not hammer the server.
@@ -1028,36 +1028,26 @@
                          :selected selected
                          :on-select handle-tree-select}])
      [:div {:class (stl/css :preview-pane)}
-      [:div {:class (stl/css :preview-toolbar)}
-       ;; Refresh — re-uses Penpot's ghost icon-button so the look
-       ;; matches every other toolbar action in the app. The reload
-       ;; glyph spins while a render is in flight (status `:loading`)
-       ;; so users get feedback that the refresh is actually working.
-       [:> icon-button* {:variant "ghost"
-                         :icon i/reload
-                         :class (stl/css :refresh-btn)
-                         :icon-class (stl/css-case
-                                      :refresh-icon-spinning (= status :loading))
-                         :on-click request-refresh
-                         :disabled (= status :loading)
-                         :aria-label (tr "viewer.html-mode.toolbar.refresh")}]
-       ;; NOTE: the section switcher (Prototype / Workspace / Design
-       ;; Tokens / Components) lives in the page header's mode-zone
-       ;; (`app.main.ui.html-mode.header`), not in this toolbar.
-       ;; Device-view controls live in the toolbar's right zone
-       ;; (`justify-self: end`). Prototype tab only — the workspace /
-       ;; design-token views have no resizable board.
-       (when (= mode :prototype)
-         [:> device-view-controls*
-          {:settings device-view
-           :default-dims (proto/board-dims (or (proto/find-frame-by-id-str page current-frame-id) frame))
-           :on-change on-device-view-change}])
-       ;; Workspace tab: background-color picker reusing the Components
-       ;; view's swatch control, so the user can preview the page against
-       ;; light / dark backdrops just like in the Components browser.
-       (when (= mode :workspace)
-         [:> bg-swatches* {:selected workspace-bg
-                           :on-change on-workspace-bg-change}])]
+      ;; Toolbar holds the per-mode preview controls (right-aligned).
+      ;; The Refresh button moved to the page header (next to the file
+      ;; breadcrumb), and the section switcher lives in the header's
+      ;; mode-zone — so this toolbar only renders for the modes that
+      ;; still have controls: Prototype (device-view) and Workspace
+      ;; (background picker). Design Tokens / Components bring their own
+      ;; layout and would otherwise show an empty strip.
+      (when (or (= mode :prototype) (= mode :workspace))
+        [:div {:class (stl/css :preview-toolbar)}
+         (when (= mode :prototype)
+           [:> device-view-controls*
+            {:settings device-view
+             :default-dims (proto/board-dims (or (proto/find-frame-by-id-str page current-frame-id) frame))
+             :on-change on-device-view-change}])
+         ;; Workspace tab: background-color picker reusing the Components
+         ;; view's swatch control, so the user can preview the page
+         ;; against light / dark backdrops like in the Components browser.
+         (when (= mode :workspace)
+           [:> bg-swatches* {:selected workspace-bg
+                             :on-change on-workspace-bg-change}])])
 
       (cond
         ;; Design Tokens mode renders its own panel layout (left sub-

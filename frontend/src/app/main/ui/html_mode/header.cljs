@@ -170,9 +170,13 @@
 (mf/defc header*
   [{:keys [project file page frames frame mode permissions]}]
   (let [zoom    (mf/deref hrefs/zoom)
+        busy?   (mf/deref hrefs/busy?)
         team-id (:team-id project)
         ;; The zoom container only wraps the iframe-driven sections.
         zoomable? (or (= mode :workspace) (= mode :prototype))
+
+        on-refresh
+        (mf/use-fn #(st/emit! (dhtml/refresh-bundle)))
 
         go-dashboard
         (mf/use-fn
@@ -206,6 +210,18 @@
                 :aria-label (tr "labels.dashboard")}
        penpot-logo-icon]
       [:> page-dropdown* {:file file :page page}]
+      ;; Refresh sits right after the file breadcrumb in every tab. It
+      ;; re-fetches the bundle; the glyph spins + the button disables
+      ;; while the section is fetching / converting (mirrored into
+      ;; mode-local state via `hrefs/busy?`).
+      [:> icon-button* {:variant "ghost"
+                        :icon i/reload
+                        :class (stl/css :refresh-btn)
+                        :icon-class (stl/css-case :refresh-icon-spinning busy?)
+                        :on-click on-refresh
+                        :disabled busy?
+                        :aria-label (tr "viewer.html-mode.toolbar.refresh")
+                        :title (tr "viewer.html-mode.toolbar.refresh")}]
       (when (= mode :prototype)
         [:> board-picker* {:frames frames :frame frame}])]
 

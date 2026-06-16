@@ -135,6 +135,18 @@
           (fetch-bundle (cond-> {:file-id file-id}
                           (uuid? share-id) (assoc :share-id share-id))))))))
 
+(defn set-busy
+  "Mirror the section's conversion/loading status into mode-local state.
+   The Refresh button now lives in the page header (next to the file
+   breadcrumb), outside the section that owns the render status — this
+   flag lets the header drive the button's in-flight spinner + disabled
+   state without lifting the whole section state machine."
+  [busy?]
+  (ptk/reify ::set-busy
+    ptk/UpdateEvent
+    (update [_ state]
+      (assoc-in state [:html-mode-local :busy?] (boolean busy?)))))
+
 ;; ---------------------------------------------------------------------------
 ;; Zoom
 ;;

@@ -8,6 +8,7 @@
 @use "ds/_sizes.scss" as *;
 @use "ds/_borders.scss" as *;
 @use "ds/_utils.scss" as *;
+@use "ds/mixins.scss" as *;
 
 // ---------------------------------------------------------------------------
 // Shell (mirrors Inspect's `.settings-bar-left`)
@@ -25,6 +26,8 @@
 }
 
 .tree-scroll {
+  @include custom-scrollbar;
+
   block-size: 100%;
   overflow-y: auto;
   padding-block: var(--sp-s);

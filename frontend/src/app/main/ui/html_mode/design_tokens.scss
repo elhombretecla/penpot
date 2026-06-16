@@ -6,6 +6,7 @@
 
 @use "ds/_sizes.scss" as *;
 @use "ds/typography.scss" as t;
+@use "ds/mixins.scss" as *;
 
 // ---------------------------------------------------------------------------
 // Shell — left sub-sidebar + main pane
@@ -54,6 +55,8 @@
 }
 
 .left-categories {
+  @include custom-scrollbar;
+
   padding-block: var(--sp-m);
   padding-inline: var(--sp-s);
   overflow-y: auto;
@@ -202,6 +205,8 @@
 // 1000px max-width + centring live on `.grid-inner` so the content
 // keeps the exact same visual width as before.
 .grid-scroll {
+  @include custom-scrollbar;
+
   flex: 1;
   overflow-y: auto;
 }
@@ -501,6 +506,8 @@
 // CSS block
 
 .css-block {
+  @include custom-scrollbar;
+
   flex: 1;
   margin: 0;
   padding: var(--sp-m);
@@ -648,6 +655,8 @@
 }
 
 .usage-left {
+  @include custom-scrollbar;
+
   flex: none;
   inline-size: $sz-252;
   background-color: var(--panel-background-color);
@@ -713,6 +722,8 @@
 }
 
 .usage-elements-list {
+  @include custom-scrollbar;
+
   list-style: none;
   margin: 0;
   padding: var(--sp-xs);
