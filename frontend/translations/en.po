@@ -2536,12 +2536,6 @@ msgstr ""
 "The Penpot MCP Server enables MCP clients to interact directly with Penpot "
 "design files."
 
-#: src/app/main/ui/settings/integrations.cljs:101
-msgid "integrations.mcp-key.info.non-recuperable"
-msgstr ""
-"This unique MCP key is non-recoverable. If you lose it, you will need to "
-"create a new one."
-
 #: src/app/main/ui/settings/integrations.cljs:113
 msgid "integrations.mcp-key.will-expire"
 msgstr "The MCP key will expire on %s"
@@ -2754,6 +2748,10 @@ msgstr "Bad Gateway"
 #: src/app/main/ui/inspect/styles/style_box.cljs:26
 msgid "labels.blur"
 msgstr "Blur"
+
+#: src/app/main/ui/inspect/styles/style_box.cljs
+msgid "labels.blur-effects"
+msgstr "Blur effects"
 
 #: src/app/main/data/common.cljs:119, src/app/main/ui/dashboard/change_owner.cljs:67, src/app/main/ui/dashboard/change_owner.cljs:174, src/app/main/ui/dashboard/import.cljs:543, src/app/main/ui/dashboard/team.cljs:866, src/app/main/ui/dashboard/team.cljs:1345, src/app/main/ui/delete_shared.cljs:36, src/app/main/ui/exports/assets.cljs:163, src/app/main/ui/exports/files.cljs:167, src/app/main/ui/settings/integrations.cljs:228, src/app/main/ui/viewer/share_link.cljs:204, src/app/main/ui/workspace/sidebar/assets/groups.cljs:178, src/app/main/ui/workspace/tokens/export/modal.cljs:43, src/app/main/ui/workspace/tokens/import/modal.cljs:268, src/app/main/ui/workspace/tokens/import_from_library.cljs:88, src/app/main/ui/workspace/tokens/management/forms/generic_form.cljs:364, src/app/main/ui/workspace/tokens/management/forms/rename_node_modal.cljs:73, src/app/main/ui/workspace/tokens/settings/menu.cljs:104, src/app/main/ui/workspace/tokens/themes/create_modal.cljs:242
 msgid "labels.cancel"
@@ -4497,7 +4495,7 @@ msgstr "Check your email and click on the link to create a new password."
 
 #: src/app/main/ui/static.cljs:167
 msgid "not-found.login.signup-free"
-msgstr "Signup for free"
+msgstr "Sign up for free"
 
 #: src/app/main/ui/static.cljs:168
 msgid "not-found.login.start-using"
@@ -4888,16 +4886,16 @@ msgid "onboarding.questions.team-size.just-me"
 msgstr "Just me"
 
 msgid "onboarding.questions.team-size.2-100"
-msgstr "2-100"
+msgstr "2 - 100"
 
 msgid "onboarding.questions.team-size.101-500"
-msgstr "101-500"
+msgstr "101 - 500"
 
 msgid "onboarding.questions.team-size.501-1000"
-msgstr "501-1,000"
+msgstr "501 - 1,000"
 
 msgid "onboarding.questions.team-size.1001-5000"
-msgstr "1,001-5,000"
+msgstr "1,001 - 5,000"
 
 msgid "onboarding.questions.team-size.more-than-5001"
 msgstr "5,001+"
@@ -7510,8 +7508,8 @@ msgid "workspace.libraries.colors.add-library-color"
 msgstr "Add color to library"
 
 #: src/app/main/ui/workspace/colorpicker/libraries.cljs
-msgid "workspace.libraries.colors.show-color-palette"
-msgstr "Show color palette"
+msgid "workspace.libraries.colors.toggle-color-palette"
+msgstr "Toggle color palette"
 
 #: src/app/main/ui/workspace/colorpicker/libraries.cljs
 msgid "workspace.libraries.colors.empty-recent-colors"
@@ -7689,9 +7687,29 @@ msgstr "Layer blur"
 msgid "workspace.options.blur-options.remove-blur"
 msgstr "Remove blur"
 
+#: src/app/main/ui/workspace/sidebar/options/menus/blur.cljs
+msgid "workspace.options.blur-options.toggle-more-options"
+msgstr "Show/hide more options"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/blur.cljs
+msgid "workspace.options.blur-options.disabled-blur-label"
+msgstr "Background blur is only supported in the new render. Switch to the new render in the Preferences menu to use this effect"
+
 #: src/app/main/ui/workspace/sidebar/options/menus/blur.cljs:113, src/app/main/ui/workspace/sidebar/options/menus/blur.cljs:138
 msgid "workspace.options.blur-options.title"
 msgstr "Blur"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/blur.cljs
+msgid "workspace.options.blur-effects-options.title"
+msgstr "Blur effects"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/blur.cljs
+msgid "workspace.options.blur-effects-options.title.group"
+msgstr "Group blur effects"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/blur.cljs
+msgid "workspace.options.blur-effects-options.title.multiple"
+msgstr "Selection blur effects"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/blur.cljs:112
 msgid "workspace.options.blur-options.title.group"
@@ -7704,6 +7722,10 @@ msgstr "Selection blur"
 #: src/app/main/ui/workspace/sidebar/options/menus/blur.cljs:141
 msgid "workspace.options.blur-options.toggle-blur"
 msgstr "Toggle blur"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/blur.cljs
+msgid "workspace.options.blur-options.blur-type-select"
+msgstr "Blur type select"
 
 #: src/app/main/ui/workspace/sidebar/options/page.cljs:60, src/app/main/ui/workspace/sidebar/options/page.cljs:68
 msgid "workspace.options.canvas-background"
@@ -10163,6 +10185,10 @@ msgstr "Assets"
 msgid "workspace.toolbar.color-palette"
 msgstr "Color Palette (%s)"
 
+#: src/app/main/ui/workspace/palette.cljs
+msgid "workspace.toolbar.palette-bar"
+msgstr "Palette bar"
+
 #: src/app/main/ui/workspace/right_header.cljs:214, src/app/main/ui/workspace/right_header.cljs:215
 msgid "workspace.toolbar.comments"
 msgstr "Comments (%s)"
@@ -10192,7 +10218,16 @@ msgstr "Create board. Click and drag to define its size. (%s)"
 msgid "workspace.toolbar.image"
 msgstr "Image (%s)"
 
-#: src/app/main/ui/workspace/top_toolbar.cljs:139, src/app/main/ui/workspace/top_toolbar.cljs:140
+msgid "workspace.toolbar.mcp"
+msgstr "MCP"
+
+msgid "workspace.toolbar.mcp-connected"
+msgstr "MCP connected"
+
+msgid "workspace.toolbar.mcp-connect-here"
+msgstr "Connect here"
+
+#: src/app/main/ui/workspace/top_toolbar.cljs:143
 msgid "workspace.toolbar.move"
 msgstr "Move (%s)"
 
