@@ -206,7 +206,10 @@
    :enable-token-import-from-library
    :enable-render-switch
    :enable-render-wasm-info
-   :enable-html-mode])
+   :enable-html-mode
+   :enable-available-viewer-wasm
+   :enable-background-blur
+   :enable-token-combobox])
 
 (defn parse
   [& flags]

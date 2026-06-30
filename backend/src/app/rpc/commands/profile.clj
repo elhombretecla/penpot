@@ -66,6 +66,8 @@
    [:id ::sm/uuid]
    [:fullname [::sm/word-string {:max 250}]]
    [:email ::sm/email]
+   [:theme {:optional true} :string]
+   [:is-admin {:optional true} ::sm/boolean]
    [:is-active {:optional true} ::sm/boolean]
    [:is-blocked {:optional true} ::sm/boolean]
    [:is-demo {:optional true} ::sm/boolean]
@@ -298,14 +300,14 @@
                          :file-mtype (:mtype file)}}))))
 
 (defn- generate-thumbnail
-  [_ input]
-  (let [input   (media/run {:cmd :info :input input})
-        thumb   (media/run {:cmd :profile-thumbnail
-                            :format :jpeg
-                            :quality 85
-                            :width 256
-                            :height 256
-                            :input input})
+  [cfg input]
+  (let [input   (media/run cfg {:cmd :info :input input})
+        thumb   (media/run cfg {:cmd :profile-thumbnail
+                                :format :jpeg
+                                :quality 85
+                                :width 256
+                                :height 256
+                                :input input})
         hash    (sto/calculate-hash (:data thumb))
         content (-> (sto/content (:data thumb) (:size thumb))
                     (sto/wrap-with-hash hash))]
