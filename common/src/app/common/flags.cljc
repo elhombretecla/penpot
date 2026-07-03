@@ -173,7 +173,8 @@
     :stroke-path
 
     ;; Enables the HTML Mode entry point in the workspace top-right toolbar
-    ;; and the `html` section in the viewer route. Experimental.
+    ;; and its standalone `/html` route. Experimental — off by default, opt in
+    ;; via PENPOT_FLAGS.
     :html-mode})
 
 (def all-flags
@@ -206,7 +207,6 @@
    :enable-token-import-from-library
    :enable-render-switch
    :enable-render-wasm-info
-   :enable-html-mode
    :enable-available-viewer-wasm
    :enable-background-blur
    :enable-token-combobox])

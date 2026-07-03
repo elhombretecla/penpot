@@ -137,14 +137,10 @@
 ;; ---------------------------------------------------------------------------
 ;; Shape lookup
 
-(defn- safe-parse-uuid
-  [s]
-  (try (uuid/parse s) (catch :default _ nil)))
-
 (defn- lookup-shape
   [page id-str]
   (when (and page id-str)
-    (when-let [id (safe-parse-uuid id-str)]
+    (when-let [id (uuid/parse* id-str)]
       (get-in page [:objects id]))))
 
 (defn- shape-icon-id
@@ -184,6 +180,7 @@
      [:header {:class (stl/css :section-header)}
       [:button {:type "button"
                 :class (stl/css :disclosure-button)
+                :aria-label title
                 :aria-expanded expanded
                 :on-click toggle}
        [:> icon* {:icon-id (if expanded i/arrow-down i/arrow)

@@ -17,10 +17,6 @@
   "The fetched bundle: {:file :pages :project :permissions :libraries :users}."
   (l/derived :html-mode st/state))
 
-(def html-mode-local
-  "Mode-local UI state: {:zoom :share-id}."
-  (l/derived :html-mode-local st/state))
-
 (def zoom
   (l/derived (comp :zoom :html-mode-local) st/state))
 

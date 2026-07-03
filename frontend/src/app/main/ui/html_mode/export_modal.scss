@@ -501,16 +501,16 @@
   // Tuned to land exactly on Dracula's reference palette so the
   // surface, foreground, and per-category hues line up with the
   // theme's spec rather than fighting Penpot's UI tokens.
-  --hljs-bg: #282a36;             // Dracula background
-  --hljs-fg: #f8f8f2;             // Dracula foreground (default text)
-  --hljs-keyword: #ff79c6;        // pink — tags, keywords, CSS at-rules
-  --hljs-string: #f1fa8c;         // yellow — strings, attribute values
-  --hljs-number: #bd93f9;         // purple — numeric & length values
-  --hljs-property: #8be9fd;       // cyan — CSS property names, JS keys
-  --hljs-attribute: #50fa7b;      // green — HTML attribute names
-  --hljs-selector: #50fa7b;       // green — CSS class / id / pseudo
-  --hljs-comment: #6272a4;        // muted blue — comments
-  --hljs-punct: #f8f8f2;          // foreground — punctuation, operators
+  --hljs-bg: #282a36; // Dracula background
+  --hljs-fg: #f8f8f2; // Dracula foreground (default text)
+  --hljs-keyword: #ff79c6; // pink — tags, keywords, CSS at-rules
+  --hljs-string: #f1fa8c; // yellow — strings, attribute values
+  --hljs-number: #bd93f9; // purple — numeric & length values
+  --hljs-property: #8be9fd; // cyan — CSS property names, JS keys
+  --hljs-attribute: #50fa7b; // green — HTML attribute names
+  --hljs-selector: #50fa7b; // green — CSS class / id / pseudo
+  --hljs-comment: #6272a4; // muted blue — comments
+  --hljs-punct: #f8f8f2; // foreground — punctuation, operators
 }
 
 // Light theme (Alucard) — the Dracula light variant. Same hue family
@@ -519,13 +519,13 @@
 :global(.light) {
   --hljs-bg: #f8f8f2;
   --hljs-fg: #1f1f1f;
-  --hljs-keyword: #a3144d;        // deep magenta
-  --hljs-string: #836a00;         // olive
-  --hljs-number: #644ac9;         // rich purple
-  --hljs-property: #036a96;       // dark cyan
-  --hljs-attribute: #14710a;      // deep green
+  --hljs-keyword: #a3144d; // deep magenta
+  --hljs-string: #836a00; // olive
+  --hljs-number: #644ac9; // rich purple
+  --hljs-property: #036a96; // dark cyan
+  --hljs-attribute: #14710a; // deep green
   --hljs-selector: #14710a;
-  --hljs-comment: #635d85;        // purple-grey
+  --hljs-comment: #635d85; // purple-grey
   --hljs-punct: #1f1f1f;
 }
 

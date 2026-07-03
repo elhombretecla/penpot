@@ -15,6 +15,16 @@ export declare function extractTokens(objects: Record<string, Shape>): Map<strin
  */
 export declare function tokenToCssVarName(tokenName: string): string;
 /**
+ * A resolved token value is interpolated verbatim into a CSS declaration
+ * inside an inline `<style>`. Values come straight from the file (fill /
+ * stroke colors, dimensions) and are attacker-controlled for a shared file.
+ * Reject anything carrying characters that could terminate the declaration
+ * (`;`), the rule (`{` `}`) or the `<style>` element itself (`<` `>`) — such
+ * a value is hostile, not a real color/dimension. Returns `null` to drop the
+ * declaration entirely.
+ */
+export declare function safeTokenCssValue(value: string): string | null;
+/**
  * Returns a CSS `var(--token-name, fallback)` reference for a token. The fallback is the
  * resolved color value from the tokens map, which makes the output readable and provides
  * a safety net if the custom property is missing.

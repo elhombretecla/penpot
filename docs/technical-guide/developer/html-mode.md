@@ -16,8 +16,9 @@ feature flag.
 ## What it does
 
 Clicking the **HTML Mode** button in the workspace top-right toolbar
-(immediately to the left of the View Mode play button) opens the
-viewer in a new window with the `html` section active. The current
+(immediately to the left of the View Mode play button) opens HTML Mode
+in a new window. It is a standalone top-level mode on its own `/html`
+route — it does not live inside the viewer. The current
 page is converted to a tree of `<div>` / `<p>` / `<img>` elements with
 inline `style="..."` attributes that mirror the Penpot design — flex
 and grid layouts become CSS flex/grid, fills become
@@ -80,9 +81,8 @@ PENPOT_FLAGS=enable-html-mode
 (Combine with other flags as needed; the order is irrelevant.)
 
 After enabling the flag, reload the workspace tab; the HTML Mode
-button should appear next to View Mode. The viewer header's mode
-switcher also gains a third button (alongside *Interactions* and
-*Inspect*) so users already in the viewer can switch into HTML Mode.
+button should appear next to View Mode. It opens the standalone
+`/html` route in a new window (the viewer is not involved).
 
 ## Architecture overview
 
@@ -96,9 +96,11 @@ HTML Mode is built on three pillars:
    dependency named `@penpot/html-converter`. The converter is pure
    TypeScript and exposes `convertPage(page, ctx)`, which returns the
    HTML body string plus the list of fonts the page uses. The
-   `oxfmt` HTML pretty-printer and the `shape-code` codegen modules
-   are stripped at vendoring time because HTML Mode does not need
-   them.
+   `oxfmt` HTML pretty-printer and the converter's `pageToCode` entry
+   are dropped at vendoring time; `shape-code.ts` is kept as a local
+   in-tree TypeScript port (it powers the Export modal's per-shape
+   code) — see the `VERSION` file for the authoritative modification
+   list.
 
 2. **A thin CLJS adapter.**
    `app.main.data.html-mode.adapter` translates Penpot's in-memory

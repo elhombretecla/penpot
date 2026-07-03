@@ -44,6 +44,7 @@
       justify-content: center;
       align-items: center;
       padding: var(--sp-xl);
+
       // Fixed neutral grey, NOT `--color-background-secondary` (which is
       // black in dark mode): the stage is a theme-independent preview
       // canvas, so its default must look the same in light and dark. This
@@ -171,6 +172,7 @@
 .board-stack {
   position: relative;
   flex: 0 0 auto;
+
   // No background: the board paints its own fill inside the (transparent)
   // iframe, so rounded / transparent boards reveal the `.preview-stage`
   // behind them instead of a white card.
@@ -285,4 +287,3 @@
 .overlay-frame .preview-iframe {
   background: transparent;
 }
-

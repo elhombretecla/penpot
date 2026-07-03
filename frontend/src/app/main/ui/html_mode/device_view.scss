@@ -48,7 +48,8 @@
 
 .row-label {
   @include t.use-typography("body-medium");
-  font-size: 12px;
+
+  font-size: 0.75rem;
   color: var(--color-foreground-primary);
   width: 100%;
 }
@@ -73,14 +74,16 @@
 
 .select-name {
   @include t.use-typography("body-medium");
+
   flex-grow: 1;
   color: var(--color-foreground-primary);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .collapsed-icon {
   display: flex;
   align-items: center;
+
   // DS icon* paints via `stroke: currentColor`, so set `color` here.
   color: var(--color-foreground-secondary);
 }
@@ -135,13 +138,15 @@
 
     .preset-name {
       @include t.use-typography("body-medium");
-      font-size: 12px;
+
+      font-size: 0.75rem;
       color: var(--color-foreground-primary);
       white-space: nowrap;
     }
 
     .preset-size {
       @include t.use-typography("body-small");
+
       color: var(--color-foreground-secondary);
       white-space: nowrap;
     }
@@ -149,6 +154,7 @@
     .check-icon {
       display: flex;
       align-items: center;
+
       // DS icon* paints via `stroke: currentColor`.
       color: var(--color-accent-primary);
     }
@@ -159,6 +165,7 @@
 
       .preset-name {
         @include t.use-typography("body-small");
+
         color: var(--color-foreground-secondary);
         text-transform: uppercase;
       }
@@ -193,6 +200,7 @@
 
 .field-label {
   @include t.use-typography("body-small");
+
   color: var(--color-foreground-secondary);
 }
 

@@ -75,7 +75,7 @@ and a **tiny inline JS runtime inside the iframe**:
 │  • Owns animation orchestration (runs WAAPI on the layer divs)  │
 │  • Module-level LRU caches the rendered prototype docs           │
 │  • Receives postMessage events from iframes                      │
-│  • Emits URL `?index=` changes on every prototype navigation     │
+│  • Emits URL `?frame-id=` changes on every prototype navigation     │
 └──┬──────────────────────────────────────────────────────────────┘
    │  initial render emits HTML doc that includes:
    │    <script>window.__PENPOT_INTERACTIONS__ = { id → [ix…] }</script>
@@ -183,7 +183,7 @@ hit different converter entry points and need different layouts.
   `frontend/vendor/penpot-html-converter` already emits `data-id` and
   `data-type` on every shape's root element. The runtime hooks on
   these data attributes; nothing in the converter needs to change.
-- **URL `?index=` stays in sync** at the end of a transition, so
+- **URL `?frame-id=` stays in sync** at the end of a transition, so
   refreshes and link-sharing land on the same board.
 
 ## Data flow: a click that triggers `:navigate`
@@ -242,7 +242,7 @@ hit different converter entry points and need different layouts.
       `:status :loading` reset — that's what keeps the destination
       iframe from being unmounted right after the animation.
     - Emits `(rt/nav :viewer (assoc params :index dest-idx))` so the
-      URL `?index=` (and therefore the viewer breadcrumb and
+      URL `?frame-id=` (and therefore the viewer breadcrumb and
       thumbnails) reflect the new board.
 12. React reconciles the new render: the layers list shrinks from
     two entries to one (the `:to-id` layer with role `"base"`).
@@ -270,7 +270,7 @@ All new logic lives here, grouped by concern:
 | `compute-overlay-rect`             | Delegates to `ctsi/calc-overlay-position` — the **same** positioning math the SVG viewer uses (`viewer.cljs` lines 141-212). Mirrors viewer behavior exactly. |
 | `easing->css`                      | Maps `:linear` / `:ease` / `:ease-in` / … to the CSS timing-function string.                                                                                    |
 | `slide-axis-percent` / `slide-keyframes` / `push-from-keyframes` | WAAPI keyframe builders for slide / push animations. Directions are 100% offsets along the right axis.                                |
-| `nav-to-frame-index!`              | Sync the URL `?index=` to a given frame-id. Called on every controller-driven navigation (animated, instant, prev-screen) so the viewer header breadcrumb / pagination reflect the current board. |
+| `nav-to-frame!`              | Sync the URL `?frame-id=` to a given frame-id. Called on every controller-driven navigation (animated, instant, prev-screen) so the header's board picker reflects the current board and a refresh lands on it. |
 | `html-mode-section*` (component)   | Hosts the prototype controller: `proto-state*` (nav stack, overlays, transition), `layer-refs*` (ref map keyed by frame-id), `rendered-frame-id*` (guard against redundant render-effect work), `dispatch-prototype-trigger`, frame-prop sync effect, WAAPI animation effect, extended postMessage listener, and the layered JSX (`.board-layer`-per-board) + overlay JSX. |
 
 #### `frontend/src/app/main/ui/html_mode.scss`
@@ -383,7 +383,7 @@ ref next to `state*`:
 
 - **`:current-frame-id`** — the uuid-string of the board currently
   displayed. Initially synced from the `frame` prop (which the
-  viewer header pagination drives via the URL `?index=`); during an
+  viewer header pagination drives via the URL `?frame-id=`); during an
   in-flight transition the controller takes ownership so the
   animation outlives a would-be URL-driven re-render.
 - **`:nav-stack`** — vector of previous `:current-frame-id` values.
@@ -406,7 +406,7 @@ Two effects drive the controller:
    the from / to `.board-layer` DOM elements from `layer-refs*` by
    id and runs WAAPI on them when `:transition` lands. On
    `finished`, commits the transition, stamps `rendered-frame-id*`,
-   updates `state*`, and emits the URL nav via `nav-to-frame-index!`.
+   updates `state*`, and emits the URL nav via `nav-to-frame!`.
 
 The render effect's deps were changed from
 `[file page mode frame]` to `[file page mode current-frame-id]` for
@@ -581,7 +581,7 @@ mode:
 2. Smoke each interaction type: `:click :navigate`,
    `:click :open-overlay`, `:click :prev-screen`, hover-toggle,
    `:open-url`, `:after-delay`.
-3. Check URL `?index=` reflects the current board, and that refresh
+3. Check URL `?frame-id=` reflects the current board, and that refresh
    lands on the same board.
 4. Cross-check against the SVG viewer for the same file; semantics
    should match.

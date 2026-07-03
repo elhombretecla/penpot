@@ -101,6 +101,14 @@
            (swap! preset-open* not)
            (reset! search-term* "")))
 
+        on-preset-key
+        (mf/use-fn
+         (mf/deps on-preset-toggle)
+         (fn [^js e]
+           (when (or (= (.-key e) "Enter") (= (.-key e) " "))
+             (dom/prevent-default e)
+             (on-preset-toggle))))
+
         on-preset-close
         (mf/use-fn
          (fn []
@@ -211,7 +219,12 @@
        [:div {:class (stl/css :row :preset-row)}
         [:div {:class (stl/css-case :presets-wrapper true :opened preset-open?)
                :ref preset-ref
-               :on-click on-preset-toggle}
+               :role "button"
+               :tab-index 0
+               :aria-haspopup "listbox"
+               :aria-expanded preset-open?
+               :on-click on-preset-toggle
+               :on-key-down on-preset-key}
          [:span {:class (stl/css :select-name)} label]
          [:span {:class (stl/css :collapsed-icon)}
           [:> icon* {:icon-id i/arrow-down :size "s"}]]

@@ -282,6 +282,7 @@
 .token-card {
   display: grid;
   grid-template-columns: auto 1fr auto;
+
   // `.token-meta` is a direct child of the card (not nested in the
   // body) so it can be repositioned per view via grid areas: in the
   // card it sits under the body; in the row view it moves to the right.
@@ -289,8 +290,7 @@
     "preview body    actions"
     "preview meta    meta";
   align-items: flex-start;
-  column-gap: var(--sp-s);
-  row-gap: var(--sp-xs);
+  gap: var(--sp-xs) var(--sp-s);
   inline-size: 100%;
   background-color: var(--color-background-primary);
   border: 1px solid var(--color-background-secondary);
@@ -331,8 +331,7 @@
   grid-template-columns: auto 1fr auto auto;
   grid-template-areas: "preview body meta actions";
   align-items: center;
-  column-gap: var(--sp-m);
-  row-gap: 0;
+  gap: 0 var(--sp-m);
 
   // Keep the swatch the same height as the card preview ($sz-48) so the
   // per-category inner shapes (radius box, stroke bar, etc.) keep their
@@ -392,7 +391,7 @@
 
   margin: 0;
   color: var(--color-foreground-primary);
-  font-size: 13px;
+  font-size: 0.8125rem;
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -403,7 +402,7 @@
 
   margin: 0;
   color: var(--color-foreground-secondary);
-  font-size: 11px;
+  font-size: 0.6875rem;
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -427,7 +426,7 @@
   color: var(--color-foreground-secondary);
   padding: 1px 6px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.4;
 }
 
@@ -435,7 +434,7 @@
   @include t.use-typography("body-small");
 
   color: var(--color-foreground-secondary);
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 // ---------------------------------------------------------------------------
@@ -515,7 +514,7 @@
   color: var(--color-foreground-primary);
   white-space: pre;
   font-family: "Roboto Mono", monospace;
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.6;
 
   // The viewer root sets `user-select: none` (see `.viewer-layout` /
@@ -783,7 +782,7 @@
   color: var(--color-foreground-secondary);
   padding: 1px 6px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.4;
 }
 
@@ -808,6 +807,7 @@
   block-size: 100%;
   border: 0;
   background-color: var(--color-background-primary);
+
   // The iframe content is a preview only — `pointer-events: none`
   // on its body already blocks input, but disabling them on the
   // wrapper too prevents the iframe from grabbing focus on click.

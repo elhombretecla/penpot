@@ -103,6 +103,89 @@ diff -ruN a/src/converter/shapes/frame.ts b/src/converter/shapes/frame.ts
    );
  
    let inner: string;
+diff -ruN a/src/converter/shapes/svg-raw.ts b/src/converter/shapes/svg-raw.ts
+--- a/src/converter/shapes/svg-raw.ts
++++ b/src/converter/shapes/svg-raw.ts
+@@ -5,10 +5,48 @@
+ import { resolvePositionOutput } from '../visual/position';
+ import { baseStyles } from '../visual/base';
+ 
++// An svg-raw shape originates from a user-imported SVG, so its tag names,
++// attribute names and attribute values are all attacker-controlled. The
++// converter output is inlined into a preview iframe that runs with
++// `allow-same-origin` (effectively unsandboxed), so any element/handler we
++// emit executes in the app origin. We therefore serialize from an allowlist
++// instead of trusting the input: names that aren't plain (SVG) identifiers
++// are dropped, event-handler attributes are dropped, and URL-bearing
++// attributes are scheme-checked. The previous regex denylist (`sanitizeSvg`)
++// was trivially bypassable — unquoted `onload=…` handlers, split
++// `<scr<script>…</script>ipt>` reassembly, `javascript:` URLs — and has been
++// removed.
++
++const SAFE_NAME_RE = /^[a-zA-Z][a-zA-Z0-9-]*$/;
++const SAFE_ATTR_RE = /^[a-zA-Z][a-zA-Z0-9-]*(?::[a-zA-Z][a-zA-Z0-9-]*)?$/;
++
++// Tags that must never be emitted even though they are valid identifiers:
++// they carry script / foreign-HTML execution semantics inside SVG.
++const FORBIDDEN_TAGS = new Set(['script', 'foreignobject', 'iframe', 'use']);
++
++// Attributes whose value is a URL. Only http(s), mailto, in-document
++// fragments, root/relative paths and non-scripting image data URIs are
++// allowed through; `javascript:`, `vbscript:`, `data:text/html`, … are
++// dropped.
++const URL_ATTRS = new Set(['href', 'xlink:href', 'src']);
++const SAFE_URL_RE = /^(?:https?:|mailto:|#|\/|data:image\/(?!svg))/i;
++
++function attrIsSafe(key: string, value: string): boolean {
++  if (!SAFE_ATTR_RE.test(key)) return false;
++  if (/^on/i.test(key)) return false; // event handlers
++  if (URL_ATTRS.has(key.toLowerCase()) && !SAFE_URL_RE.test(value.trim())) return false;
++  return true;
++}
++
+ function serializeNode(node: SvgRawContentNode | string): string {
++  // A string node is text content: always escaped, never parsed as markup.
+   if (typeof node === 'string') return escapeHtml(node);
++  if (!node.tag || !SAFE_NAME_RE.test(node.tag) || FORBIDDEN_TAGS.has(node.tag.toLowerCase())) {
++    return '';
++  }
+   const attrs = node.attrs
+     ? Object.entries(node.attrs)
++        .filter(([k, v]) => attrIsSafe(k, String(v)))
+         .map(([k, v]) => ` ${k}="${escapeHtml(String(v))}"`)
+         .join('')
+     : '';
+@@ -16,24 +54,19 @@
+   return children ? `<${node.tag}${attrs}>${children}</${node.tag}>` : `<${node.tag}${attrs} />`;
+ }
+ 
+-function sanitizeSvg(content: string): string {
+-  return content
+-    .replace(/<script[\s\S]*?<\/script>/gi, '')
+-    .replace(/\s+on\w+="[^"]*"/gi, '')
+-    .replace(/\s+on\w+='[^']*'/gi, '');
+-}
+-
+ export function renderSvgRaw(shape: SvgRawShape, ctx: ConverterContext): string {
+   const base = baseStyles(shape, ctx);
+-  const markup = typeof shape.content === 'string' ? shape.content : serializeNode(shape.content);
+-  const safeContent = sanitizeSvg(markup);
++  // Both branches go through the allowlist serializer: a structured content
++  // tree is walked node-by-node (the normal Penpot shape); a raw string is
++  // treated as inert escaped text rather than trusted markup.
++  const safeContent = serializeNode(shape.content);
+   const posStyle = resolvePositionOutput(shape, ctx);
+ 
+   const style = mergeStyles(posStyle, base);
+ 
+   const attrs = [
+-    `data-id="${shape.id}"`,
+-    `data-type="${shape.type}"`,
++    `data-id="${escapeHtml(String(shape.id))}"`,
++    `data-type="${escapeHtml(String(shape.type))}"`,
+     style ? `style="${style}"` : '',
+   ]
+     .filter(Boolean)
 diff -ruN a/src/converter/shapes/text.ts b/src/converter/shapes/text.ts
 --- a/src/converter/shapes/text.ts
 +++ b/src/converter/shapes/text.ts
@@ -241,7 +324,63 @@ diff -ruN a/src/converter/tokens.ts b/src/converter/tokens.ts
  
  function getFirstTextLeafFill(shape: TextShape): string | undefined {
    if (!shape.content) return undefined;
-@@ -109,7 +110,9 @@
+@@ -71,7 +72,26 @@
+  * because dots are not valid in CSS custom property names.
+  */
+ export function tokenToCssVarName(tokenName: string): string {
+-  return tokenName.replace(/\./g, '-');
++  // Dots aren't valid in custom-property names; every other character
++  // outside the CSS-identifier charset is stripped so a hostile token name
++  // (names come verbatim from the file) cannot break out of the
++  // `--name: value` declaration or the surrounding inline <style>.
++  return tokenName.replace(/\./g, '-').replace(/[^a-zA-Z0-9_-]/g, '');
++}
++
++/**
++ * A resolved token value is interpolated verbatim into a CSS declaration
++ * inside an inline `<style>`. Values come straight from the file (fill /
++ * stroke colors, dimensions) and are attacker-controlled for a shared file.
++ * Reject anything carrying characters that could terminate the declaration
++ * (`;`), the rule (`{` `}`) or the `<style>` element itself (`<` `>`) — such
++ * a value is hostile, not a real color/dimension. Returns `null` to drop the
++ * declaration entirely.
++ */
++export function safeTokenCssValue(value: string): string | null {
++  const v = String(value).trim();
++  if (v === '' || /[<>{};]/.test(v)) return null;
++  return v;
+ }
+ 
+ /**
+@@ -82,7 +102,8 @@
+ export function tokenToCssVar(tokenName: string, tokens?: Map<string, string>): string {
+   const varName = tokenToCssVarName(tokenName);
+   const fallback = tokens?.get(tokenName);
+-  return fallback ? `var(--${varName}, ${fallback})` : `var(--${varName})`;
++  const safeFallback = fallback != null ? safeTokenCssValue(fallback) : null;
++  return safeFallback ? `var(--${varName}, ${safeFallback})` : `var(--${varName})`;
+ }
+ 
+ /**
+@@ -93,9 +114,15 @@
+   if (tokens.size === 0) return '';
+   const props = Array.from(tokens.entries())
+     .sort(([a], [b]) => a.localeCompare(b))
+-    .map(([name, value]) => `    --${tokenToCssVarName(name)}: ${value};`)
++    .map(([name, value]) => {
++      const varName = tokenToCssVarName(name);
++      const safeValue = safeTokenCssValue(value);
++      if (!varName || safeValue === null) return null;
++      return `    --${varName}: ${safeValue};`;
++    })
++    .filter((line): line is string => line !== null)
+     .join('\n');
+-  return `:root {\n${props}\n  }`;
++  return props ? `:root {\n${props}\n  }` : '';
+ }
+ 
+ // ============================================================
+@@ -109,7 +136,9 @@
    | 'radius'
    | 'rotation'
    | 'typography'
@@ -252,7 +391,7 @@ diff -ruN a/src/converter/tokens.ts b/src/converter/tokens.ts
  
  export interface TokenInfo {
    /** Raw token name (dots preserved — e.g. "colors.brand.500") */
-@@ -222,10 +225,29 @@
+@@ -222,10 +251,29 @@
          ? { category: 'rotation', value: `${n}deg`, numericValue: n }
          : undefined;
      }
@@ -282,7 +421,7 @@ diff -ruN a/src/converter/tokens.ts b/src/converter/tokens.ts
      case 'textCase':
      case 'textDecoration': {
        if (shape.type !== 'text') return undefined;
-@@ -245,6 +267,23 @@
+@@ -245,6 +293,23 @@
        }
        return { category: 'typography', value: str };
      }

@@ -207,12 +207,12 @@
   [hex]
   (case (count hex)
     4 (str "#" (subs hex 1 2) (subs hex 1 2)
-              (subs hex 2 3) (subs hex 2 3)
-              (subs hex 3 4) (subs hex 3 4))
+           (subs hex 2 3) (subs hex 2 3)
+           (subs hex 3 4) (subs hex 3 4))
     5 (str "#" (subs hex 1 2) (subs hex 1 2)
-              (subs hex 2 3) (subs hex 2 3)
-              (subs hex 3 4) (subs hex 3 4)
-              (subs hex 4 5) (subs hex 4 5))
+           (subs hex 2 3) (subs hex 2 3)
+           (subs hex 3 4) (subs hex 3 4)
+           (subs hex 4 5) (subs hex 4 5))
     hex))
 
 (defn- hex->parts
@@ -288,7 +288,7 @@
       (if (< alpha 1)
         (str base (-> (js/Math.round (* alpha 255))
                       (.toString 16)
-                      (str/pad {:length 2 :char "0" :type :left})))
+                      (str/pad {:length 2 :padding "0" :type :left})))
         base)
 
       :rgb
@@ -298,7 +298,11 @@
           (str "rgb(" r ", " g ", " b ")")))
 
       :hsl
+      ;; `cc/hex->hsl` divides by `(max - min)` for saturation, which is
+      ;; `0/0 = NaN` for any achromatic color (pure white/black/grey). Guard
+      ;; it so the formatted output is `0%` rather than a literal `NaN%`.
       (let [[h s l] (cc/hex->hsl base)
+            s (if (mth/nan? s) 0 s)
             h (int (mth/round h))
             s (fmt-num (* s 100) 1)
             l (fmt-num (* l 100) 1)]
@@ -318,15 +322,37 @@
       ;; Fallback: leave as-is.
       hex)))
 
+(def ^:private url-token-re
+  ;; A CSS `url(...)` token — unquoted (stops at the first `)`) or quoted.
+  ;; Colour/unit rewriting must skip these: an SVG fragment reference like
+  ;; `url(#a1b2c3)` looks exactly like a hex colour, and a filename like
+  ;; `url(icon-16px.svg)` (or a `width='24px'` inside an inline SVG data
+  ;; URI) looks exactly like a px length. Non-capturing throughout so the
+  ;; combined pattern hands `str/replace` a bare match string.
+  #"[uU][rR][lL]\(\s*(?:\"[^\"]*\"|'[^']*'|[^)]*)\s*\)")
+
+(defn- rewrite-outside-url
+  "Apply `f` to every `pattern` match in `value` EXCEPT those that fall
+   inside a `url(...)` token, which are returned verbatim. Works by
+   alternating the url token (matched first, so it wins and swallows its
+   contents) with `pattern` in a single pass."
+  [value pattern f]
+  (let [combined (re-pattern (str "(?:" (.-source url-token-re) ")"
+                                  "|(?:" (.-source pattern) ")"))]
+    (str/replace value combined
+                 (fn [match]
+                   (if (str/starts-with? (str/lower match) "url(")
+                     match
+                     (f match))))))
+
 (defn rewrite-colors
   "Rewrite every hex color literal in a CSS value string to the requested
-   format. Non-hex content is preserved verbatim."
+   format. Non-hex content — and any hex inside a `url(...)` token — is
+   preserved verbatim."
   [value format]
   (if (or (str/blank? value) (= format :hex))
     value
-    (str/replace value hex-pattern
-                 (fn [match]
-                   (format-color match format)))))
+    (rewrite-outside-url value hex-pattern #(format-color % format))))
 
 ;; ---------------------------------------------------------------------------
 ;; Length unit conversion
@@ -360,12 +386,12 @@
     (str/blank? value) value
     (= unit :px) value
     :else
-    (str/replace value px-pattern
-                 (fn [match]
-                   (let [n (js/parseFloat match)]
-                     (if (zero? n)
-                       "0"
-                       (convert-px n unit base)))))))
+    (rewrite-outside-url value px-pattern
+                         (fn [match]
+                           (let [n (js/parseFloat match)]
+                             (if (zero? n)
+                               "0"
+                               (convert-px n unit base)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Combined per-declaration rewrite

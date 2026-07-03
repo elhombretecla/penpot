@@ -35,6 +35,7 @@
 
 .empty-description {
   @include t.use-typography("body-medium");
+
   margin: 0;
 }
 
@@ -446,8 +447,7 @@
 .variant-props {
   display: grid;
   grid-template-columns: max-content 1fr;
-  column-gap: var(--sp-m);
-  row-gap: var(--sp-xs);
+  gap: var(--sp-xs) var(--sp-m);
   margin: 0;
 }
 

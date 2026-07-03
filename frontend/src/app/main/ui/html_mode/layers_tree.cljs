@@ -69,7 +69,29 @@
            ;; parent reads `:fit` from `opts` and forwards it to the
            ;; iframe as `d.fit`.
            (when on-select
-             (on-select id {:fit (or (.-ctrlKey e) (.-metaKey e))}))))]
+             (on-select id {:fit (or (.-ctrlKey e) (.-metaKey e))}))))
+
+        ;; Keyboard operation for the treeitem row: Enter/Space selects,
+        ;; ArrowRight expands a collapsed parent, ArrowLeft collapses an
+        ;; expanded one — so the tree is usable without a pointer.
+        handle-key
+        (mf/use-fn
+         (mf/deps id on-select on-toggle has-children? expanded?)
+         (fn [^js e]
+           (case (.-key e)
+             ("Enter" " ")
+             (do (.preventDefault e)
+                 (when on-select
+                   (on-select id {:fit (or (.-ctrlKey e) (.-metaKey e))})))
+             "ArrowRight"
+             (when (and has-children? (not expanded?) on-toggle)
+               (.preventDefault e)
+               (on-toggle id))
+             "ArrowLeft"
+             (when (and has-children? expanded? on-toggle)
+               (.preventDefault e)
+               (on-toggle id))
+             nil)))]
 
     [:div {:class (stl/css-case
                    :layer-row true
@@ -77,9 +99,11 @@
                    :selected selected?)
            :style {"--depth" depth}
            :role "treeitem"
+           :tab-index 0
            :aria-selected selected?
            :aria-expanded (when has-children? expanded?)
            :on-click handle-select
+           :on-key-down handle-key
            :data-testid (dm/str "html-mode-layer-" id)}
      [:span {:class (stl/css :tab-indentation)
              :style {"--depth" depth}}]

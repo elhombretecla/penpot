@@ -111,7 +111,9 @@
 ;; Rule helpers (pure)
 
 (defn- normalize-value
-  [type value]
+  ;; `_type` is accepted for call-site symmetry with the typed rule fields;
+  ;; value normalization is currently type-independent.
+  [_type value]
   (-> value (or "") str str/trim))
 
 (defn make-rule

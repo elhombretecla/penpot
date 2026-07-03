@@ -17,7 +17,6 @@
    [app.common.data :as d]
    [app.common.data.macros :as dm]
    [app.common.schema :as sm]
-   [app.common.uuid :as uuid]
    [app.main.data.event :as ev]
    [app.main.data.fonts :as df]
    [app.main.data.persistence :as-alias dps]
@@ -60,21 +59,31 @@
   (ptk/reify ::bundle-fetched
     ptk/UpdateEvent
     (update [_ state]
-      (let [team-id (:id team)
-            team    (assoc team :members users)
-            pages   (dvb/decorate-pages file)]
-        (-> state
-            (assoc :share-links share-links)
-            (assoc :current-team-id team-id)
-            (assoc :teams {team-id team})
-            (assoc :files (-> (d/index-by :id libraries)
-                              (assoc (:id file) file)))
-            (assoc :html-mode {:libraries (d/index-by :id libraries)
-                               :users (d/index-by :id users)
-                               :permissions permissions
-                               :project project
-                               :pages pages
-                               :file file}))))))
+      (let [team-id       (:id team)
+            team          (assoc team :members users)
+            pages         (dvb/decorate-pages file)
+            current-revn  (dm/get-in state [:html-mode :file :revn])
+            incoming-revn (:revn file)]
+        ;; Guard against out-of-order responses: the header Refresh button
+        ;; and the visibilitychange auto-refresh can both be in flight, and a
+        ;; slower/older response must not clobber a newer bundle that already
+        ;; landed. A strictly-older revn is a stale response — drop it.
+        (if (and (some? current-revn)
+                 (some? incoming-revn)
+                 (< incoming-revn current-revn))
+          state
+          (-> state
+              (assoc :share-links share-links)
+              (assoc :current-team-id team-id)
+              (assoc :teams {team-id team})
+              (assoc :files (-> (d/index-by :id libraries)
+                                (assoc (:id file) file)))
+              (assoc :html-mode {:libraries (d/index-by :id libraries)
+                                 :users (d/index-by :id users)
+                                 :permissions permissions
+                                 :project project
+                                 :pages pages
+                                 :file file})))))))
 
 (defn- fetch-bundle
   "Fetch + resolve the bundle and emit the standard follow-up events:
@@ -111,11 +120,17 @@
           (assoc-in [:html-mode-local :share-id] share-id)))
 
     ptk/WatchEvent
-    (watch [_ _ _]
-      (rx/merge
-       (fetch-bundle params)
-       (when (some? share-id)
-         (rx/of (ev/event {::ev/name "shared-html-mode-visited"})))))
+    (watch [_ _ stream]
+      ;; Cancel the in-flight fetch if the page is left before it resolves:
+      ;; a late `bundle-fetched` would otherwise re-assert the `:html-mode`
+      ;; subtree (and app-wide `:teams` / `:files` / `:current-team-id`)
+      ;; after `finalize` already tore the mode down.
+      (let [stopper (rx/filter (ptk/type? ::finalize) stream)]
+        (->> (rx/merge
+              (fetch-bundle params)
+              (when (some? share-id)
+                (rx/of (ev/event {::ev/name "shared-html-mode-visited"}))))
+             (rx/take-until stopper))))
 
     ptk/EffectEvent
     (effect [_ _ _]
@@ -140,12 +155,20 @@
   []
   (ptk/reify ::refresh-bundle
     ptk/WatchEvent
-    (watch [_ state _]
+    (watch [_ state stream]
       (let [file-id  (:current-file-id state)
-            share-id (dm/get-in state [:html-mode-local :share-id])]
+            share-id (dm/get-in state [:html-mode-local :share-id])
+            ;; A newer refresh (or leaving the mode) supersedes this one, so
+            ;; the latest request always wins and a slow response can't land
+            ;; after a fresher one. The `bundle-fetched` revn guard is the
+            ;; second line of defence.
+            stopper  (rx/filter #(let [t (ptk/type %)]
+                                   (or (= t ::refresh-bundle) (= t ::finalize)))
+                                stream)]
         (when (uuid? file-id)
-          (fetch-bundle (cond-> {:file-id file-id}
-                          (uuid? share-id) (assoc :share-id share-id))))))))
+          (->> (fetch-bundle (cond-> {:file-id file-id}
+                               (uuid? share-id) (assoc :share-id share-id)))
+               (rx/take-until stopper)))))))
 
 (defn set-busy
   "Mirror the section's conversion/loading status into mode-local state.
@@ -289,8 +312,3 @@
     "components"    :components
     :workspace))
 
-(defn parse-uuid-param
-  "Parse an optional uuid-typed query param. Returns nil on missing or
-   malformed input."
-  [v]
-  (some-> v uuid/parse*))

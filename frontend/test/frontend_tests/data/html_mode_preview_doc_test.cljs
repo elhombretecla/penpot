@@ -154,3 +154,34 @@
         doc  (pdoc/build-static-doc "<div>body</div>" "" "" page)]
     (t/is (not (str/includes? doc "<script>alert(1)</script>")))
     (t/is (str/includes? doc "background: #ffffff"))))
+
+;; ---------------------------------------------------------------------------
+;; fonts-css / tokens-css style-block neutralization
+;;
+;; The converter builds the `@font-face` and `:root { --token: value }`
+;; blocks from attacker-influenced strings (a custom-font family name, a
+;; design-token name/value in a shared file). They are inlined into an
+;; inline <style> element in an `allow-same-origin` iframe, so a value that
+;; closes the <style> element would inject a live <script>. The wrapper must
+;; strip `<` from both blocks regardless of what the converter emitted.
+
+(def ^:private style-breakout
+  ":root { --x: a } </style><script>alert(document.domain)</script>")
+
+(t/deftest build-document-neutralizes-tokens-css-breakout
+  (let [doc (pdoc/build-document (assoc parts :tokens-css style-breakout) sample-page)]
+    (t/is (not (str/includes? doc "</style><script>alert")))
+    (t/is (not (str/includes? doc "<script>alert(document.domain)")))))
+
+(t/deftest build-document-neutralizes-fonts-css-breakout
+  (let [doc (pdoc/build-document (assoc parts :fonts-css style-breakout) sample-page)]
+    (t/is (not (str/includes? doc "</style><script>alert")))))
+
+(t/deftest build-prototype-document-neutralizes-tokens-css-breakout
+  (let [doc (pdoc/build-prototype-document
+             (assoc parts :tokens-css style-breakout) sample-page proto-frame)]
+    (t/is (not (str/includes? doc "</style><script>alert")))))
+
+(t/deftest build-static-doc-neutralizes-style-block-breakout
+  (let [doc (pdoc/build-static-doc "<div>body</div>" style-breakout style-breakout sample-page)]
+    (t/is (not (str/includes? doc "</style><script>alert")))))

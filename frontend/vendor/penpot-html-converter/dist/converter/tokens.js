@@ -66,7 +66,26 @@ export function extractTokens(objects) {
  * because dots are not valid in CSS custom property names.
  */
 export function tokenToCssVarName(tokenName) {
-    return tokenName.replace(/\./g, '-');
+    // Dots aren't valid in custom-property names; every other character
+    // outside the CSS-identifier charset is stripped so a hostile token name
+    // (names come verbatim from the file) cannot break out of the
+    // `--name: value` declaration or the surrounding inline <style>.
+    return tokenName.replace(/\./g, '-').replace(/[^a-zA-Z0-9_-]/g, '');
+}
+/**
+ * A resolved token value is interpolated verbatim into a CSS declaration
+ * inside an inline `<style>`. Values come straight from the file (fill /
+ * stroke colors, dimensions) and are attacker-controlled for a shared file.
+ * Reject anything carrying characters that could terminate the declaration
+ * (`;`), the rule (`{` `}`) or the `<style>` element itself (`<` `>`) — such
+ * a value is hostile, not a real color/dimension. Returns `null` to drop the
+ * declaration entirely.
+ */
+export function safeTokenCssValue(value) {
+    const v = String(value).trim();
+    if (v === '' || /[<>{};]/.test(v))
+        return null;
+    return v;
 }
 /**
  * Returns a CSS `var(--token-name, fallback)` reference for a token. The fallback is the
@@ -76,7 +95,8 @@ export function tokenToCssVarName(tokenName) {
 export function tokenToCssVar(tokenName, tokens) {
     const varName = tokenToCssVarName(tokenName);
     const fallback = tokens?.get(tokenName);
-    return fallback ? `var(--${varName}, ${fallback})` : `var(--${varName})`;
+    const safeFallback = fallback != null ? safeTokenCssValue(fallback) : null;
+    return safeFallback ? `var(--${varName}, ${safeFallback})` : `var(--${varName})`;
 }
 /**
  * Converts a token map to a CSS `:root { ... }` block with custom properties.
@@ -87,9 +107,16 @@ export function tokensToCss(tokens) {
         return '';
     const props = Array.from(tokens.entries())
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([name, value]) => `    --${tokenToCssVarName(name)}: ${value};`)
+        .map(([name, value]) => {
+        const varName = tokenToCssVarName(name);
+        const safeValue = safeTokenCssValue(value);
+        if (!varName || safeValue === null)
+            return null;
+        return `    --${varName}: ${safeValue};`;
+    })
+        .filter((line) => line !== null)
         .join('\n');
-    return `:root {\n${props}\n  }`;
+    return props ? `:root {\n${props}\n  }` : '';
 }
 function pxOrUndefined(n) {
     return typeof n === 'number' ? `${n}px` : undefined;

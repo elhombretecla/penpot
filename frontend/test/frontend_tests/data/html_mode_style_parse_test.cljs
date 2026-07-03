@@ -7,7 +7,8 @@
 (ns frontend-tests.data.html-mode-style-parse-test
   (:require
    [app.main.data.html-mode.style-parse :as sp]
-   [cljs.test :as t]))
+   [cljs.test :as t]
+   [cuerdas.core :as str]))
 
 ;; ---------------------------------------------------------------------------
 ;; parse-declarations
@@ -123,3 +124,42 @@
         rendered (sp/declarations->css parsed)
         reparsed (sp/parse-declarations rendered)]
     (t/is (= parsed reparsed))))
+
+;; ---------------------------------------------------------------------------
+;; format-color
+
+(t/deftest format-color-hex-low-alpha-pads-with-zero
+  ;; alpha byte < 0x10 must render as a two-digit hex (`0a`), not `#000000 a`
+  ;; — a `str/pad` mis-keyed with `:char` inserted a space instead of `0`.
+  (t/is (= "#0000000a" (sp/format-color "#0000000a" :hex)))
+  (t/is (= "#ffffff05" (sp/format-color "#ffffff05" :hex))))
+
+;; ---------------------------------------------------------------------------
+;; rewrite-colors / rewrite-units — url(...) contexts must be preserved
+
+(t/deftest rewrite-colors-skips-url-fragment-refs
+  ;; `url(#a1b2c3)` is an SVG fragment reference, not a hex colour — it
+  ;; must survive a colour-format switch untouched.
+  (t/is (= "fill: url(#a1b2c3)"
+           (sp/rewrite-colors "fill: url(#a1b2c3)" :rgb)))
+  ;; A real hex outside the url() is still converted.
+  (t/is (= "color: rgb(255, 255, 255); fill: url(#a1b2c3)"
+           (sp/rewrite-colors "color: #ffffff; fill: url(#a1b2c3)" :rgb))))
+
+(t/deftest rewrite-units-skips-url-filenames
+  ;; `16px` inside a filename / data URI must not be rewritten to rem.
+  (t/is (= "background: url(\"icon-16px.svg\")"
+           (sp/rewrite-units "background: url(\"icon-16px.svg\")" :rem)))
+  ;; A real length outside the url() is still converted.
+  (t/is (= "width: 1rem; background: url(\"icon-16px.svg\")"
+           (sp/rewrite-units "width: 16px; background: url(\"icon-16px.svg\")" :rem))))
+
+(t/deftest format-color-hsl-white-is-not-nan
+  ;; Achromatic colors divide by zero for saturation in the HSL conversion;
+  ;; the result must be `0%`, never a literal `NaN%`.
+  (let [white (sp/format-color "#ffffff" :hsl)
+        black (sp/format-color "#000000" :hsl)]
+    (t/is (not (str/includes? white "NaN")) white)
+    (t/is (not (str/includes? black "NaN")) black)
+    (t/is (= "hsl(0, 0%, 100%)" white))
+    (t/is (= "hsl(0, 0%, 0%)" black))))

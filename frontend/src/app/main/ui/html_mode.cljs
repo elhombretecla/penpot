@@ -163,8 +163,8 @@
 ;; Prototype mode rendering
 ;;
 ;; Prototype mode shows ONE board at a time, picked by the URL
-;; `?index=` query param (driven by the existing viewer header
-;; thumbnails / pagination). The board renders via `convertShape`.
+;; `?frame-id=` query param (driven by the header's board picker).
+;; The board renders via `convertShape`.
 ;; Unlike Workspace mode, the iframe runs a tiny JS runtime
 ;; (`prototype-bridge-script`) that wires the shape `:interactions`
 ;; data to real DOM behavior — click / hover / after-delay / open-url
@@ -363,7 +363,7 @@
         ;; on every board change, the nav-stack / overlays / in-flight
         ;; transition must persist.
         ;;
-        ;; `:current-frame-id` mirrors the URL `?index=` on entry but
+        ;; `:current-frame-id` mirrors the URL `?frame-id=` on entry but
         ;; the controller TAKES OWNERSHIP of it while transitions are
         ;; in flight — that lets the dual-iframe animation outlive a
         ;; would-be URL-driven re-render. URL sync happens once the
@@ -427,7 +427,7 @@
         ;; trigger time.
         proto-live*   (mf/use-ref nil)
         state-html*   (mf/use-ref nil)
-        {:keys [status html error updated-at]} (deref state*)
+        {:keys [status html error]} (deref state*)
         {:keys [current-frame-id overlays transition]} (deref proto-state*)
         ;; Device-view settings (Prototype tab). The controls live in the
         ;; header now (next to Zoom); the value is held in mode-local
@@ -787,14 +787,26 @@
     ;; iframe AND for `:prototype:trigger` messages from the prototype
     ;; iframe. A single window-level listener handles both so we don't
     ;; pay for two registrations.
-    (mf/with-effect []
+    ;;
+    ;; Depends on `dispatch-prototype-trigger` (memoised by `[file page]`)
+    ;; so the listener re-registers when the page changes or an edit
+    ;; refresh advances the file — otherwise the handler would keep the
+    ;; first render's closure and resolve prototype clicks against the
+    ;; stale page's frames/objects.
+    (mf/with-effect [dispatch-prototype-trigger]
       (let [handler (fn [^js e]
-                      (let [data (.-data e)
-                            result (proto/read-selected data)]
-                        (cond
-                          (= result ::proto/deselect) (reset! selected* nil)
-                          (some? result)        (reset! selected* result)
-                          :else                 (dispatch-prototype-trigger data))))]
+                      ;; The preview iframes are same-origin srcdoc documents
+                      ;; (`allow-same-origin`), so their messages carry the
+                      ;; app's own origin. Reject anything else — a stray
+                      ;; cross-origin window must not drive selection or
+                      ;; prototype navigation.
+                      (when (= (.-origin e) (.-origin ^js js/location))
+                        (let [data (.-data e)
+                              result (proto/read-selected data)]
+                          (cond
+                            (= result ::proto/deselect) (reset! selected* nil)
+                            (some? result)        (reset! selected* result)
+                            :else                 (dispatch-prototype-trigger data)))))]
         (.addEventListener js/window "message" handler)
         (fn [] (.removeEventListener js/window "message" handler))))
 

@@ -126,6 +126,30 @@
     (t/is (contains? (:files result) lib-id))
     (t/is (contains? (:teams result) team-id))))
 
+(t/deftest bundle-fetched-ignores-stale-revn
+  ;; The Refresh button and the visibilitychange auto-refresh can both be
+  ;; in flight; a slower/older response must not clobber a newer bundle
+  ;; that already landed.
+  (let [newer (assoc-in (sample-bundle) [:file :revn] 5)
+        older (assoc-in (sample-bundle) [:file :revn] 3)
+        s1    (ptk/update (dhtml/bundle-fetched newer) {})
+        s2    (ptk/update (dhtml/bundle-fetched older) s1)]
+    (t/is (= 5 (get-in s2 [:html-mode :file :revn])))))
+
+(t/deftest bundle-fetched-applies-newer-revn
+  (let [older (assoc-in (sample-bundle) [:file :revn] 3)
+        newer (assoc-in (sample-bundle) [:file :revn] 7)
+        s1    (ptk/update (dhtml/bundle-fetched older) {})
+        s2    (ptk/update (dhtml/bundle-fetched newer) s1)]
+    (t/is (= 7 (get-in s2 [:html-mode :file :revn])))))
+
+(t/deftest bundle-fetched-applies-when-no-current-revn
+  ;; First fetch (no revn in state yet) always applies, even revn 0.
+  (let [result (ptk/update (dhtml/bundle-fetched
+                            (assoc-in (sample-bundle) [:file :revn] 0)) {})]
+    (t/is (some? (:html-mode result)))
+    (t/is (= 0 (get-in result [:html-mode :file :revn])))))
+
 ;; ---------------------------------------------------------------------------
 ;; param parsing
 
@@ -136,8 +160,3 @@
   (t/is (= :workspace (dhtml/parse-mode "workspace")))
   (t/is (= :workspace (dhtml/parse-mode nil)))
   (t/is (= :workspace (dhtml/parse-mode "garbage"))))
-
-(t/deftest parse-uuid-param-safe
-  (t/is (= file-id (dhtml/parse-uuid-param (str file-id))))
-  (t/is (nil? (dhtml/parse-uuid-param nil)))
-  (t/is (nil? (dhtml/parse-uuid-param "not-a-uuid"))))

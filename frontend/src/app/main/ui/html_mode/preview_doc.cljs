@@ -45,6 +45,19 @@
       (str/replace ">" "&gt;")
       (str/replace "\"" "&quot;")))
 
+(defn- safe-style-block
+  "Backstop for converter-supplied CSS blocks (`@font-face` rules and the
+   `:root { --token: value }` custom-property block) before they are inlined
+   into an inline <style> element. Both carry attacker-influenced strings for
+   a shared file — a custom-font family name, a design-token name/value — and
+   the preview iframes run with `allow-same-origin`, so a `</style><script>`
+   breakout would be session XSS. Valid CSS never contains `<`, so stripping
+   it neutralizes any attempt to close the <style> element (the converter
+   also sanitizes token names/values at source, this is defense-in-depth so
+   the wrapper never trusts converter output blindly)."
+  [css]
+  (str/replace (str css) "<" ""))
+
 (def ^:private css-color-re
   ;; Hex colors, rgb()/rgba()/hsl()/oklch() functions, gradients and
   ;; plain keywords — wide enough for anything the color picker can
@@ -191,8 +204,8 @@
      "<meta charset=\"utf-8\">\n"
      "<title>Penpot preview</title>\n"
      "<style>\n"
-     (when (seq fonts-css) (str fonts-css "\n"))
-     (when (seq tokens-css) (str tokens-css "\n"))
+     (when (seq fonts-css) (str (safe-style-block fonts-css) "\n"))
+     (when (seq tokens-css) (str (safe-style-block tokens-css) "\n"))
      "  *, *::before, *::after { box-sizing: border-box; }\n"
      "  html, body { margin: 0; padding: 0; }\n"
      "  p, h1, h2, h3, h4, h5, h6, ul, ol, dl, li, dd, blockquote, figure, pre { margin: 0; padding: 0; }\n"
@@ -256,13 +269,13 @@
      "<meta charset=\"utf-8\">\n"
      "<title>" name "</title>\n"
      "<style>\n"
-     (when (seq fonts-css) (str fonts-css "\n"))
+     (when (seq fonts-css) (str (safe-style-block fonts-css) "\n"))
      ;; Design-token CSS custom properties: every `var(--name, fallback)`
      ;; reference the converter emits resolves against this block. Without
      ;; it, the fallback is the only colour the browser ever sees — and if
      ;; the converter wasn't given a tokens map, even the fallback is
      ;; missing and the rule degrades to `inherit`.
-     (when (seq tokens-css) (str tokens-css "\n"))
+     (when (seq tokens-css) (str (safe-style-block tokens-css) "\n"))
      "  *, *::before, *::after { box-sizing: border-box; }\n"
      "  html, body { margin: 0; padding: 0; }\n"
      ;; Browser user-agent stylesheets give `<p>` (and the related
@@ -346,8 +359,8 @@
      "<meta charset=\"utf-8\">\n"
      "<title>" title "</title>\n"
      "<style>\n"
-     (when (seq fonts-css) (str fonts-css "\n"))
-     (when (seq tokens-css) (str tokens-css "\n"))
+     (when (seq fonts-css) (str (safe-style-block fonts-css) "\n"))
+     (when (seq tokens-css) (str (safe-style-block tokens-css) "\n"))
      "  *, *::before, *::after { box-sizing: border-box; }\n"
      "  html, body { margin: 0; padding: 0; inline-size: 100%; block-size: 100%; }\n"
      "  p, h1, h2, h3, h4, h5, h6, ul, ol, dl, li, dd, blockquote, figure, pre { margin: 0; padding: 0; }\n"

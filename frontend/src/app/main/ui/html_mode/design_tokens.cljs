@@ -45,7 +45,6 @@
    [app.main.ui.ds.layout.tab-switcher :refer [tab-switcher*]]
    [app.main.ui.html-mode.preview-doc :as pdoc]
    [app.main.ui.html-mode.sidebar :refer [format-picker*]]
-   [app.util.dom :as dom]
    ;; Side-effecting require: the `:tokens/export` modal registers
    ;; itself when this namespace is loaded. Pulled in here so the
    ;; viewer bundle picks it up — without this the `modal/show!`
@@ -54,6 +53,7 @@
    [app.main.ui.workspace.tokens.export]
    [app.util.clipboard :as clipboard]
    [app.util.code-beautify :as beautify]
+   [app.util.dom :as dom]
    [app.util.i18n :refer [tr]]
    [app.util.timers :as tm]
    [cuerdas.core :as str]

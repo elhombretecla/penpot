@@ -605,7 +605,11 @@
    "function dispatch(interaction, sourceId){"
    "  var a=interaction.actionType;"
    "  if(a==='open-url' && interaction.url){"
-   "    try{window.open(interaction.url,'_blank','noopener,noreferrer');}catch(e){}"
+   ;; The URL is authored in the file's prototype interactions, i.e.
+   ;; attacker-controlled for a shared file. Only http(s)/mailto are opened
+   ;; so a `javascript:` / `data:` / `vbscript:` URL can't execute.
+   "    try{var u=String(interaction.url).trim();"
+   "      if(/^(?:https?:|mailto:)/i.test(u)){window.open(u,'_blank','noopener,noreferrer');}}catch(e){}"
    "    return;"
    "  }"
    "  send({type:'penpot:prototype:trigger', sourceId:sourceId, interaction:interaction});"

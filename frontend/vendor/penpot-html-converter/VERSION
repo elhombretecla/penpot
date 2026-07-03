@@ -8,10 +8,15 @@ modifications (the authoritative record is patches/penpot-local.patch):
   carries every local modification to vendored files — oxfmt removal in
   index.ts, wrap-aware flex-basis fixes in layout/layout-item.ts,
   `isolation: isolate` on frames, typography threading and primary-
-  typography surfacing in shapes/text.ts, extended `extractAllTokens` in
-  tokens.ts, `typographies` in the converter context (types.ts), null-safe
-  `escapeHtml` (utils/html.ts), z-index surfacing (visual/base.ts), and
-  extra applied-token fields (penpot.types.ts).
+  typography surfacing in shapes/text.ts, extended `extractAllTokens` and
+  CSS-value/name sanitization in tokens.ts (`safeTokenCssValue`, identifier-
+  only var names — token names/values reach an inline <style> in a
+  same-origin preview iframe), allowlist-based svg-raw serialization in
+  shapes/svg-raw.ts (drops the bypassable regex denylist; validates tag/attr
+  names, strips event handlers and non-http(s) URLs), `typographies` in the
+  converter context (types.ts), null-safe `escapeHtml` (utils/html.ts),
+  z-index surfacing (visual/base.ts), and extra applied-token fields
+  (penpot.types.ts).
 - Replaced upstream src/converter/shape-code.ts with a LOCAL TypeScript port
   (maintained in-tree, preserved by scripts/sync-html-converter.sh across
   snapshots). It drops oxfmt and `pageToCode`, validates rule tags against

@@ -56,6 +56,11 @@
         ;; Only the pages present in the (possibly share-link-filtered)
         ;; bundle are listed.
         page-ids (get-in file [:data :pages])
+        on-key   (mf/use-fn
+                  (fn [^js e]
+                    (when (or (= (.-key e) "Enter") (= (.-key e) " "))
+                      (dom/prevent-default e)
+                      (reset! show* true))))
         on-select
         (mf/use-fn
          (fn [event]
@@ -64,7 +69,12 @@
                         (uuid))]
              (st/emit! (dhtml/go-to-page id)))))]
     [:div {:class (stl/css :breadcrumb)
-           :on-click open!}
+           :role "button"
+           :tab-index 0
+           :aria-haspopup "menu"
+           :aria-expanded show?
+           :on-click open!
+           :on-key-down on-key}
      [:span {:class (stl/css :breadcrumb-text)}
       (dm/str (:name file) " / " (:name page))]
      [:span {:class (stl/css :icon)} deprecated-icon/arrow]
@@ -88,6 +98,11 @@
         show?  (deref show*)
         open!  (mf/use-fn #(reset! show* true))
         close! (mf/use-fn #(reset! show* false))
+        on-key (mf/use-fn
+                (fn [^js e]
+                  (when (or (= (.-key e) "Enter") (= (.-key e) " "))
+                    (dom/prevent-default e)
+                    (reset! show* true))))
         on-select
         (mf/use-fn
          (fn [event]
@@ -97,7 +112,12 @@
              (st/emit! (dhtml/go-to-frame id)))))]
     (when (seq frames)
       [:div {:class (stl/css :board-picker)
-             :on-click open!}
+             :role "button"
+             :tab-index 0
+             :aria-haspopup "menu"
+             :aria-expanded show?
+             :on-click open!
+             :on-key-down on-key}
        [:span {:class (stl/css :board-picker-name)}
         (or (:name frame) "—")]
        [:span {:class (stl/css :icon)} deprecated-icon/arrow]
@@ -158,15 +178,16 @@
     [:div {:class (stl/css :zoom-widget)
            :title (tr "workspace.header.zoom")}
      [:button {:class (stl/css :zoom-btn)
-               :aria-label (tr "workspace.header.zoom")
+               :aria-label (tr "shortcuts.decrease-zoom")
                :on-click on-decrease}
       deprecated-icon/remove-icon]
      [:button {:class (stl/css :zoom-reset)
+               :aria-label (tr "workspace.header.reset-zoom")
                :title (tr "workspace.header.reset-zoom")
                :on-click on-reset}
       (dm/str (js/Math.round (* 100 (or zoom 1))) "%")]
      [:button {:class (stl/css :zoom-btn)
-               :aria-label (tr "workspace.header.zoom")
+               :aria-label (tr "shortcuts.increase-zoom")
                :on-click on-increase}
       deprecated-icon/add]]))
 
