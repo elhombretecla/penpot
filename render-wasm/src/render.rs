@@ -19,6 +19,7 @@ mod vector;
 use skia_safe::{self as skia, Matrix, RRect, Rect};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use options::RenderOptions;
 pub use surfaces::{SurfaceId, Surfaces};
@@ -40,6 +41,10 @@ pub use fonts::*;
 pub use images::*;
 
 type ClipStack = Vec<(Rect, Option<Corners>, Matrix)>;
+/// Clip stacks are pushed to every child node the walker visits; sharing them
+/// behind an `Rc` makes that push a pointer copy instead of a Vec clone. The
+/// Vec is only copied when a container appends a new clip (`append_clip`).
+type SharedClipStack = Rc<ClipStack>;
 
 #[repr(u8)]
 pub enum FrameType {
@@ -63,7 +68,7 @@ pub struct NodeRenderState {
     // We use this bool to keep that we've traversed all the children inside this node.
     visited_children: bool,
     // This is used to clip the content of frames.
-    clip_bounds: Option<ClipStack>,
+    clip_bounds: Option<SharedClipStack>,
     // This is a flag to indicate that we've already drawn the mask of a masked group.
     visited_mask: bool,
     // This bool indicates that we're drawing the mask shape.
@@ -110,16 +115,12 @@ impl NodeRenderState {
     ///   This is useful for nested coordinate systems or when elements are grouped
     ///   and need relative positioning adjustments.
     fn append_clip(
-        clip_stack: Option<ClipStack>,
+        clip_stack: Option<SharedClipStack>,
         clip: (Rect, Option<Corners>, Matrix),
-    ) -> Option<ClipStack> {
-        match clip_stack {
-            Some(mut stack) => {
-                stack.push(clip);
-                Some(stack)
-            }
-            None => Some(vec![clip]),
-        }
+    ) -> Option<SharedClipStack> {
+        let mut stack: ClipStack = clip_stack.map(|rc| (*rc).clone()).unwrap_or_default();
+        stack.push(clip);
+        Some(Rc::new(stack))
     }
 
     pub fn get_children_clip_bounds(
@@ -127,7 +128,7 @@ impl NodeRenderState {
         element: &Shape,
         offset: Option<(f32, f32)>,
         clip_inset: Option<f32>,
-    ) -> Option<ClipStack> {
+    ) -> Option<SharedClipStack> {
         if self.id.is_nil() || !element.clip() {
             return self.clip_bounds.clone();
         }
@@ -172,7 +173,7 @@ impl NodeRenderState {
         &self,
         element: &Shape,
         shadow: &Shadow,
-    ) -> Option<ClipStack> {
+    ) -> Option<SharedClipStack> {
         if self.id.is_nil() {
             return self.clip_bounds.clone();
         }
@@ -296,11 +297,18 @@ fn sort_z_index(tree: ShapesPoolRef, element: &Shape, children_ids: Vec<Uuid>) -
         if element.is_flex() && !element.is_flex_reverse() {
             ids.reverse();
         }
-        ids.sort_by(|id1, id2| {
-            let z1 = tree.get(id1).map(|s| s.z_index()).unwrap_or(0);
-            let z2 = tree.get(id2).map(|s| s.z_index()).unwrap_or(0);
-            z2.cmp(&z1)
-        });
+        // Pre-fetch each child's z-index once: `tree.get` is a pool lookup
+        // (and may lazily build a modified clone), so doing it inside the
+        // comparator costs two lookups per comparison instead of one per
+        // child.
+        let mut keyed: Vec<(i32, Uuid)> = ids
+            .iter()
+            .map(|id| (tree.get(id).map(|s| s.z_index()).unwrap_or(0), *id))
+            .collect();
+        // Stable sort: equal z keeps child order (z descending).
+        keyed.sort_by(|a, b| b.0.cmp(&a.0));
+        ids.clear();
+        ids.extend(keyed.into_iter().map(|(_, id)| id));
         ids
     } else {
         children_ids
@@ -413,6 +421,18 @@ pub(crate) struct RenderState {
     /// a tile before its text glyph uploads complete (blank first/center tile).
     /// One explicit flush warms the submit path for the rest of the pass.
     pub tile_atlas_flushed: bool,
+    /// (interest_rect, scale bits) of the last completed `rebuild_tile_index`
+    /// pass. While the viewport stays within the same interest area at the
+    /// same scale, the index is already up to date (incremental edit paths
+    /// keep it in sync), so a re-index — O(top-level shapes) — can be skipped.
+    /// Reset to `None` whenever the tile index is invalidated wholesale.
+    indexed_tile_key: Option<(tiles::TileRect, u32)>,
+    /// Union of pre/post-modifier bounds of all modified shapes for the
+    /// current frame (doc-space @ scale 1.0). Computed once per
+    /// `start_render_loop` — the walker runs once per pending tile and would
+    /// otherwise recompute this identical union for every tile of the frame.
+    /// Outer `None` = not yet computed this frame.
+    moved_bounds_frame: Option<Option<Rect>>,
 }
 
 pub struct InteractiveDragCrop {
@@ -425,6 +445,9 @@ pub struct InteractiveDragCrop {
     pub capture_src_left: i32,
     pub capture_src_top: i32,
     pub image: skia::Image,
+    /// When the crop shares the full-backbuffer snapshot, the source rect to
+    /// blit from; `None` when `image` is already the exact crop.
+    pub src_rect: Option<skia::Rect>,
 }
 
 /// Chooses a window inside the full workspace-pixel crop `[0, out_w) × [0, out_h)` with each side
@@ -600,6 +623,8 @@ impl RenderState {
             preserve_target_during_render: false,
             backbuffer_crop_cache: HashMap::default(),
             tile_atlas_flushed: false,
+            indexed_tile_key: None,
+            moved_bounds_frame: None,
         })
     }
 
@@ -1185,7 +1210,7 @@ impl RenderState {
     pub fn render_shape(
         &mut self,
         shape: &Shape,
-        clip_bounds: Option<ClipStack>,
+        clip_bounds: Option<SharedClipStack>,
         fills_surface_id: SurfaceId,
         strokes_surface_id: SurfaceId,
         innershadows_surface_id: SurfaceId,
@@ -1436,30 +1461,27 @@ impl RenderState {
                 let count_inner_strokes = shape.count_visible_inner_strokes();
                 // Erode the main text fill by 1px when there are inner strokes, to avoid a visible seam at the glyph edge.
                 let text_fill_inset = (count_inner_strokes > 0).then(|| 1.0 / self.get_scale());
+                let has_strokes = shape.has_visible_strokes();
                 let text_stroke_blur_outset =
                     Stroke::max_bounds_width(shape.visible_strokes(), false);
-                let mut paragraph_builders = text_content.paragraph_builder_group_from_text(None);
+                // Built + laid-out paragraphs come from the shared variant
+                // cache: shaping happens once per content/style change, not
+                // once per tile per frame.
+                let fill_paragraphs = text_content.cached_fill_paragraphs(&shape);
                 let stroke_kinds: Vec<StrokeKind> =
                     shape.visible_strokes().rev().map(|s| s.kind).collect();
-                let (mut stroke_paragraphs_list, stroke_opacities): (Vec<_>, Vec<_>) = shape
-                    .visible_strokes()
-                    .rev()
-                    .map(|stroke| {
-                        text::stroke_paragraph_builder_group_from_text(
-                            text_content,
-                            stroke,
-                            &shape.selrect(),
-                            None,
-                        )
-                    })
-                    .unzip();
+                let stroke_paragraphs_list = if has_strokes {
+                    text_content.cached_stroke_paragraphs(&shape, false)
+                } else {
+                    Vec::new()
+                };
                 if skip_effects {
                     // Fast path: render fills and strokes only (skip shadows/blur).
                     text::render(
                         Some(self),
                         None,
                         &shape,
-                        &mut paragraph_builders,
+                        &fill_paragraphs,
                         Some(fills_surface_id),
                         None,
                         None,
@@ -1467,20 +1489,16 @@ impl RenderState {
                         None,
                     )?;
 
-                    for (i, (stroke_paragraphs, layer_opacity)) in stroke_paragraphs_list
-                        .iter_mut()
-                        .zip(stroke_opacities.iter())
-                        .enumerate()
+                    for (i, (stroke_paragraphs, layer_opacity)) in
+                        stroke_paragraphs_list.iter().enumerate()
                     {
                         if stroke_kinds[i] == StrokeKind::Inner {
-                            let mut fill_builders =
-                                text_content.paragraph_builder_group_from_text(None);
                             text::render_inner_stroke(
                                 Some(self),
                                 None,
                                 &shape,
                                 stroke_paragraphs,
-                                &mut fill_builders,
+                                &fill_paragraphs,
                                 Some(strokes_surface_id),
                                 None,
                                 text_stroke_blur_outset,
@@ -1513,15 +1531,13 @@ impl RenderState {
                         }
                     }
 
-                    if shape.has_visible_strokes() && text_content.has_non_ascii() {
-                        let mut emoji_builders = text_content.paragraph_builder_group_opaque();
-                        let mut deco_builders =
-                            text_content.paragraph_builder_group_from_text(None);
+                    if has_strokes && text_content.has_non_ascii() {
+                        let emoji_paragraphs = text_content.cached_opaque_paragraphs(&shape);
                         text::render_emoji_overlay(
                             self,
                             &shape,
-                            &mut emoji_builders,
-                            &mut deco_builders,
+                            &emoji_paragraphs,
+                            &fill_paragraphs,
                             strokes_surface_id,
                             None,
                         );
@@ -1535,32 +1551,32 @@ impl RenderState {
 
                     let inner_shadows = shape.inner_shadow_paints();
                     let blur_filter = shape.image_filter(1.);
-                    let mut paragraphs_with_shadows =
-                        text_content.paragraph_builder_group_from_text(Some(true));
-                    let (mut stroke_paragraphs_with_shadows_list, _shadow_opacities): (
-                        Vec<_>,
-                        Vec<_>,
-                    ) = shape
-                        .visible_strokes()
-                        .rev()
-                        .map(|stroke| {
-                            text::stroke_paragraph_builder_group_from_text(
-                                text_content,
-                                stroke,
-                                &shape.selrect(),
-                                Some(true),
-                            )
-                        })
-                        .unzip();
+                    let needs_shadow_variants = !drop_shadows.is_empty()
+                        || !inner_shadows.is_empty()
+                        || parent_shadows.is_some();
+                    let paragraphs_with_shadows = if needs_shadow_variants {
+                        Some(text_content.cached_fill_shadow_paragraphs(&shape))
+                    } else {
+                        None
+                    };
+                    let stroke_paragraphs_with_shadows_list =
+                        if needs_shadow_variants && has_strokes {
+                            text_content.cached_stroke_paragraphs(&shape, true)
+                        } else {
+                            Vec::new()
+                        };
 
                     if let Some(parent_shadows) = parent_shadows {
-                        if !shape.has_visible_strokes() {
+                        let paragraphs_with_shadows = paragraphs_with_shadows
+                            .as_ref()
+                            .expect("shadow variant present when parent shadows exist");
+                        if !has_strokes {
                             for shadow in parent_shadows {
                                 text::render(
                                     Some(self),
                                     None,
                                     &shape,
-                                    &mut paragraphs_with_shadows,
+                                    paragraphs_with_shadows,
                                     text_drop_shadows_surface_id.into(),
                                     Some(&shadow),
                                     blur_filter.as_ref(),
@@ -1572,8 +1588,8 @@ impl RenderState {
                             shadows::render_text_shadows(
                                 self,
                                 &shape,
-                                &mut paragraphs_with_shadows,
-                                &mut stroke_paragraphs_with_shadows_list,
+                                paragraphs_with_shadows,
+                                &stroke_paragraphs_with_shadows_list,
                                 text_drop_shadows_surface_id.into(),
                                 &parent_shadows,
                                 &blur_filter,
@@ -1583,19 +1599,22 @@ impl RenderState {
                         }
                     } else {
                         // 1. Text drop shadows
-                        if !shape.has_visible_strokes() {
-                            for shadow in &drop_shadows {
-                                text::render(
-                                    Some(self),
-                                    None,
-                                    &shape,
-                                    &mut paragraphs_with_shadows,
-                                    text_drop_shadows_surface_id.into(),
-                                    Some(shadow),
-                                    blur_filter.as_ref(),
-                                    None,
-                                    None,
-                                )?;
+                        if !has_strokes {
+                            if let Some(paragraphs_with_shadows) = paragraphs_with_shadows.as_ref()
+                            {
+                                for shadow in &drop_shadows {
+                                    text::render(
+                                        Some(self),
+                                        None,
+                                        &shape,
+                                        paragraphs_with_shadows,
+                                        text_drop_shadows_surface_id.into(),
+                                        Some(shadow),
+                                        blur_filter.as_ref(),
+                                        None,
+                                        None,
+                                    )?;
+                                }
                             }
                         }
 
@@ -1604,7 +1623,7 @@ impl RenderState {
                             Some(self),
                             None,
                             &shape,
-                            &mut paragraph_builders,
+                            &fill_paragraphs,
                             Some(fills_surface_id),
                             None,
                             blur_filter.as_ref(),
@@ -1613,33 +1632,31 @@ impl RenderState {
                         )?;
 
                         // 3. Stroke drop shadows
-                        shadows::render_text_shadows(
-                            self,
-                            &shape,
-                            &mut paragraphs_with_shadows,
-                            &mut stroke_paragraphs_with_shadows_list,
-                            text_drop_shadows_surface_id.into(),
-                            &drop_shadows,
-                            &blur_filter,
-                            &stroke_kinds,
-                            text_content,
-                        )?;
+                        if let Some(paragraphs_with_shadows) = paragraphs_with_shadows.as_ref() {
+                            shadows::render_text_shadows(
+                                self,
+                                &shape,
+                                paragraphs_with_shadows,
+                                &stroke_paragraphs_with_shadows_list,
+                                text_drop_shadows_surface_id.into(),
+                                &drop_shadows,
+                                &blur_filter,
+                                &stroke_kinds,
+                                text_content,
+                            )?;
+                        }
 
                         // 4. Stroke fills
-                        for (i, (stroke_paragraphs, layer_opacity)) in stroke_paragraphs_list
-                            .iter_mut()
-                            .zip(stroke_opacities.iter())
-                            .enumerate()
+                        for (i, (stroke_paragraphs, layer_opacity)) in
+                            stroke_paragraphs_list.iter().enumerate()
                         {
                             if stroke_kinds[i] == StrokeKind::Inner {
-                                let mut fill_builders =
-                                    text_content.paragraph_builder_group_from_text(None);
                                 text::render_inner_stroke(
                                     Some(self),
                                     None,
                                     &shape,
                                     stroke_paragraphs,
-                                    &mut fill_builders,
+                                    &fill_paragraphs,
                                     Some(strokes_surface_id),
                                     blur_filter.as_ref(),
                                     text_stroke_blur_outset,
@@ -1672,47 +1689,47 @@ impl RenderState {
                             }
                         }
 
-                        if shape.has_visible_strokes() && text_content.has_non_ascii() {
-                            let mut emoji_builders = text_content.paragraph_builder_group_opaque();
-                            let mut deco_builders =
-                                text_content.paragraph_builder_group_from_text(None);
+                        if has_strokes && text_content.has_non_ascii() {
+                            let emoji_paragraphs = text_content.cached_opaque_paragraphs(&shape);
                             text::render_emoji_overlay(
                                 self,
                                 &shape,
-                                &mut emoji_builders,
-                                &mut deco_builders,
+                                &emoji_paragraphs,
+                                &fill_paragraphs,
                                 strokes_surface_id,
                                 blur_filter.as_ref(),
                             );
                         }
 
                         // 5. Stroke inner shadows
-                        shadows::render_text_shadows(
-                            self,
-                            &shape,
-                            &mut paragraphs_with_shadows,
-                            &mut stroke_paragraphs_with_shadows_list,
-                            Some(innershadows_surface_id),
-                            &inner_shadows,
-                            &blur_filter,
-                            &stroke_kinds,
-                            text_content,
-                        )?;
+                        if let Some(paragraphs_with_shadows) = paragraphs_with_shadows.as_ref() {
+                            shadows::render_text_shadows(
+                                self,
+                                &shape,
+                                paragraphs_with_shadows,
+                                &stroke_paragraphs_with_shadows_list,
+                                Some(innershadows_surface_id),
+                                &inner_shadows,
+                                &blur_filter,
+                                &stroke_kinds,
+                                text_content,
+                            )?;
 
-                        // 6. Fill Inner shadows
-                        if !shape.has_visible_strokes() {
-                            for shadow in &inner_shadows {
-                                text::render(
-                                    Some(self),
-                                    None,
-                                    &shape,
-                                    &mut paragraphs_with_shadows,
-                                    Some(innershadows_surface_id),
-                                    Some(shadow),
-                                    blur_filter.as_ref(),
-                                    None,
-                                    None,
-                                )?;
+                            // 6. Fill Inner shadows
+                            if !has_strokes {
+                                for shadow in &inner_shadows {
+                                    text::render(
+                                        Some(self),
+                                        None,
+                                        &shape,
+                                        paragraphs_with_shadows,
+                                        Some(innershadows_surface_id),
+                                        Some(shadow),
+                                        blur_filter.as_ref(),
+                                        None,
+                                        None,
+                                    )?;
+                                }
                             }
                         }
                     }
@@ -1937,6 +1954,11 @@ impl RenderState {
         // triggering a separate `image_snapshot` flush.
         let atlas_snap = self.surfaces.atlas.snapshot_for_drag_crop();
 
+        // Single copy-on-write snapshot of the whole backbuffer, shared by
+        // every in-backbuffer crop (with per-crop source rects at draw time)
+        // instead of one GPU subset copy per candidate.
+        let backbuffer_full = self.surfaces.snapshot_full(SurfaceId::Backbuffer);
+
         // Scratch surface reused across all shapes that need the tile/atlas
         // fallback — avoids one WebGL texture allocation per shape.
         // Created lazily on first use and grown if a later shape needs more space.
@@ -1992,15 +2014,11 @@ impl RenderState {
                 && window_irect.right <= bb_w
                 && window_irect.bottom <= bb_h;
 
-            let backbuffer_snap = if in_backbuffer {
-                self.surfaces
-                    .snapshot_rect(SurfaceId::Backbuffer, window_irect)
-            } else {
-                None
-            };
-
-            let image = if let Some(img) = backbuffer_snap {
-                img
+            let (image, src_rect) = if in_backbuffer {
+                (
+                    backbuffer_full.clone(),
+                    Some(skia::Rect::from_irect(window_irect)),
+                )
             } else {
                 // Ensure the scratch surface is large enough for this window.
                 // Grow (reallocate) only when necessary so that the common case
@@ -2032,7 +2050,7 @@ impl RenderState {
                 ) else {
                     continue;
                 };
-                img
+                (img, None)
             };
 
             self.backbuffer_crop_cache.insert(
@@ -2045,6 +2063,7 @@ impl RenderState {
                     capture_src_left: window_irect.left,
                     capture_src_top: window_irect.top,
                     image,
+                    src_rect,
                 },
             );
         }
@@ -2122,6 +2141,10 @@ impl RenderState {
         sync_render: bool,
     ) -> Result<FrameType> {
         self.clear(tree);
+
+        // Modifiers can only change between rAFs; a new render pass starts a
+        // new frame, so the per-frame moved-bounds memo must be recomputed.
+        self.moved_bounds_frame = None;
 
         let _start = performance::begin_timed_log!("start_render_loop");
         let scale = self.get_scale();
@@ -2214,8 +2237,14 @@ impl RenderState {
         } else {
             // Keep progressive yielding, except for a localized shape edit on a
             // stable viewbox (e.g. recoloring) which renders in one frame.
-            let allow_stop =
-                !preserve_target || self.zoom_changed() || self.options.is_interactive_transform();
+            // While a view gesture is live (fast_mode), always yield: the
+            // SYNC_TILES pause-render also arrives with preserve_target set,
+            // and rendering every pending tile in one frame would block the
+            // main thread mid-gesture on large files.
+            let allow_stop = !preserve_target
+                || self.zoom_changed()
+                || self.options.is_interactive_transform()
+                || self.options.is_fast_mode();
             frame_type = self.continue_render_loop(base_object, tree, timestamp, allow_stop)?;
 
             // This is an option to debug frames.
@@ -2612,7 +2641,7 @@ impl RenderState {
         &mut self,
         element: &Shape,
         visited_mask: bool,
-        clip_bounds: Option<ClipStack>,
+        clip_bounds: Option<SharedClipStack>,
         target_surface: SurfaceId,
     ) -> Result<()> {
         if visited_mask {
@@ -2792,7 +2821,7 @@ impl RenderState {
         shape: &Shape,
         shape_bounds: &Rect,
         shadow: &Shadow,
-        clip_bounds: Option<ClipStack>,
+        clip_bounds: Option<SharedClipStack>,
         scale: f32,
         extra_layer_blur: Option<Blur>,
         target_surface: SurfaceId,
@@ -3016,7 +3045,7 @@ impl RenderState {
         element: &Shape,
         tree: ShapesPoolRef,
         extrect: &mut Option<Rect>,
-        clip_bounds: Option<ClipStack>,
+        clip_bounds: Option<SharedClipStack>,
         scale: f32,
         node_render_state: &NodeRenderState,
         target_surface: SurfaceId,
@@ -3160,39 +3189,51 @@ impl RenderState {
         //
         // `modifier_ids` is pre-computed once here and reused throughout the loop to avoid
         // repeated allocations (formerly O(N_shapes) HashMap builds) per node.
+        //
+        // The union itself is memoized per frame (`moved_bounds_frame`): this
+        // function runs once per pending tile, and the union only changes
+        // between frames (modifiers are set once per rAF).
         let modifier_ids = tree.modifier_ids();
-        let moved_bounds = if self.options.is_interactive_transform() && !modifier_ids.is_empty() {
-            let mut acc: Option<Rect> = None;
-            for id in modifier_ids.iter() {
-                // Current (post-modifier) bounds
-                if let Some(s) = tree.get(id) {
-                    let r = self.get_cached_extrect(s, tree, 1.0);
-                    acc = Some(match acc {
-                        None => r,
-                        Some(mut prev) => {
-                            prev.join(r);
-                            prev
-                        }
-                    });
-                }
+        let moved_bounds = match self.moved_bounds_frame {
+            Some(cached) => cached,
+            None => {
+                let computed =
+                    if self.options.is_interactive_transform() && !modifier_ids.is_empty() {
+                        let mut acc: Option<Rect> = None;
+                        for id in modifier_ids.iter() {
+                            // Current (post-modifier) bounds
+                            if let Some(s) = tree.get(id) {
+                                let r = self.get_cached_extrect(s, tree, 1.0);
+                                acc = Some(match acc {
+                                    None => r,
+                                    Some(mut prev) => {
+                                        prev.join(r);
+                                        prev
+                                    }
+                                });
+                            }
 
-                // Pre-modifier bounds: important so cached top-level crops that still contain the
-                // shape at its original position are considered "unsafe" even after the shape
-                // has moved away (e.g. dragging a child out of a clipped frame).
-                if let Some(raw) = tree.get_raw(id) {
-                    let r0 = self.get_cached_extrect(raw, tree, 1.0);
-                    acc = Some(match acc {
-                        None => r0,
-                        Some(mut prev) => {
-                            prev.join(r0);
-                            prev
+                            // Pre-modifier bounds: important so cached top-level crops that still contain the
+                            // shape at its original position are considered "unsafe" even after the shape
+                            // has moved away (e.g. dragging a child out of a clipped frame).
+                            if let Some(raw) = tree.get_raw(id) {
+                                let r0 = self.get_cached_extrect(raw, tree, 1.0);
+                                acc = Some(match acc {
+                                    None => r0,
+                                    Some(mut prev) => {
+                                        prev.join(r0);
+                                        prev
+                                    }
+                                });
+                            }
                         }
-                    });
-                }
+                        acc
+                    } else {
+                        None
+                    };
+                self.moved_bounds_frame = Some(computed);
+                computed
             }
-            acc
-        } else {
-            None
         };
 
         while let Some(node_render_state) = self.pending_nodes.pop() {
@@ -3346,10 +3387,25 @@ impl RenderState {
 
                         let x = (doc_left + translation.0) * scale;
                         let y = (doc_top + translation.1) * scale;
-                        let bw = crop_image.width() as f32;
-                        let bh = crop_image.height() as f32;
+                        let (bw, bh) = match crop.src_rect {
+                            Some(src) => (src.width(), src.height()),
+                            None => (crop_image.width() as f32, crop_image.height() as f32),
+                        };
                         let dst = skia::Rect::from_xywh(x, y, bw, bh);
-                        canvas.draw_image_rect(crop_image, None, dst, &skia::Paint::default());
+                        match crop.src_rect.as_ref() {
+                            Some(src) => canvas.draw_image_rect(
+                                crop_image,
+                                Some((src, skia::canvas::SrcRectConstraint::Strict)),
+                                dst,
+                                &skia::Paint::default(),
+                            ),
+                            None => canvas.draw_image_rect(
+                                crop_image,
+                                None,
+                                dst,
+                                &skia::Paint::default(),
+                            ),
+                        };
 
                         canvas.restore();
                     }
@@ -3393,7 +3449,7 @@ impl RenderState {
                     self.render_background_blur(element, target_surface);
                 }
 
-                self.render_shape_enter(element, mask, clip_bounds.as_ref(), target_surface);
+                self.render_shape_enter(element, mask, clip_bounds.as_deref(), target_surface);
             }
 
             if !node_render_state.is_root() && self.focus_mode.is_active() {
@@ -3818,6 +3874,29 @@ impl RenderState {
         tree: ShapesPoolRef,
     ) -> Vec<tiles::Tile> {
         let tile_rect = self.get_tiles_for_shape(shape, tree);
+
+        // Fast path: membership unchanged. During a pan most shapes keep the
+        // exact same tile set (their extrect and the clamped tile rect are
+        // identical), so compare the new rect against the indexed set without
+        // building two HashSets + diffs per shape.
+        let new_count = if tile_rect.is_degenerate() {
+            0
+        } else {
+            tile_rect.len() as usize
+        };
+        match self.tiles.get_tiles_of(shape.id) {
+            Some(old) => {
+                if old.len() == new_count && tile_rect.iter(true).all(|t| old.contains(&t)) {
+                    return Vec::new();
+                }
+            }
+            None => {
+                if new_count == 0 {
+                    return Vec::new();
+                }
+            }
+        }
+
         let old_tiles: HashSet<tiles::Tile> = self
             .tiles
             .get_tiles_of(shape.id)
@@ -3870,6 +3949,19 @@ impl RenderState {
     /// survive so that fast-mode renders during pan still show shadows/blur.
     pub fn rebuild_tile_index(&mut self, tree: ShapesPoolRef) {
         let zoom_changed = self.zoom_changed();
+
+        // Skip when the interest area and scale are identical to the last
+        // completed index pass: the index can only have changed through the
+        // incremental edit paths (update_shape_tiles / rebuild_tiles_from /
+        // add_shape_tiles), which keep it in sync for the current interest
+        // area. This turns pan pauses shorter than one tile — and every
+        // mid-gesture SYNC_TILES render — into a no-op instead of an
+        // O(top-level shapes) walk.
+        let tile_key = (self.tile_viewbox.interest_rect, self.get_scale().to_bits());
+        if !zoom_changed && self.indexed_tile_key == Some(tile_key) {
+            return;
+        }
+
         performance::begin_measure!("rebuild_tile_index");
         let mut nodes = Vec::<Uuid>::with_capacity(64);
         nodes.push(Uuid::nil());
@@ -3889,6 +3981,7 @@ impl RenderState {
                 }
             }
         }
+        self.indexed_tile_key = Some(tile_key);
         performance::end_measure!("rebuild_tile_index");
     }
 
@@ -3913,6 +4006,9 @@ impl RenderState {
         performance::begin_measure!("rebuild_tiles");
 
         self.tiles.invalidate();
+        // The index was cleared wholesale; the next rebuild_tile_index pass
+        // must run in full even if the interest area did not change.
+        self.indexed_tile_key = None;
 
         let mut all_tiles = HashSet::<tiles::Tile>::new();
         let mut nodes = {
@@ -4042,6 +4138,15 @@ impl RenderState {
 
     pub fn mark_touched(&mut self, uuid: Uuid) {
         self.touched_ids.insert(uuid);
+    }
+
+    /// Invalidates per-frame memos. Called once per rAF from the `render`
+    /// entry point: modifiers (and thus the moved-bounds union) can only
+    /// change between rAFs, so partial-frame continuations within the same
+    /// rAF can safely reuse the memoized value.
+    pub fn begin_frame_memos(&mut self) {
+        self.moved_bounds_frame = None;
+        self.images.begin_frame();
     }
 
     #[allow(dead_code)]

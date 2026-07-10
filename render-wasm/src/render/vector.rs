@@ -151,7 +151,7 @@ impl ShapeRenderer for VectorRenderer<'_> {
         };
 
         let text_content = text_content.new_bounds(shape.selrect());
-        let mut paragraph_builders = text_content.paragraph_builder_group_from_text(None);
+        let fill_paragraphs = text_content.cached_fill_paragraphs(shape);
         let blur_filter = shape.image_filter(1.);
 
         // Text drop shadows: one filter layer per shadow over fill + stroke
@@ -159,22 +159,13 @@ impl ShapeRenderer for VectorRenderer<'_> {
         let drop_shadows = shape.drop_shadow_paints();
         if !drop_shadows.is_empty() {
             let shadow_stroke_outset = Stroke::max_bounds_width(shape.visible_strokes(), false);
-            let mut shadow_paragraphs = text_content.paragraph_builder_group_from_text(Some(true));
-            let mut stroke_shadow_groups: Vec<(StrokeKind, _)> = shape
+            let shadow_paragraphs = text_content.cached_fill_shadow_paragraphs(shape);
+            let stroke_shadow_groups: Vec<(StrokeKind, _)> = shape
                 .visible_strokes()
                 .rev()
-                .map(|stroke| {
-                    (
-                        stroke.render_kind(false),
-                        text::stroke_paragraph_builder_group_from_text(
-                            &text_content,
-                            stroke,
-                            &shape.selrect(),
-                            Some(true),
-                        )
-                        .0,
-                    )
-                })
+                .map(|stroke| stroke.render_kind(false))
+                .zip(text_content.cached_stroke_paragraphs(shape, true))
+                .map(|(kind, (paragraphs, _))| (kind, paragraphs))
                 .collect();
 
             for shadow_paint in &drop_shadows {
@@ -184,24 +175,22 @@ impl ShapeRenderer for VectorRenderer<'_> {
                 text::render_overlay_emoji(
                     self.canvas,
                     shape,
-                    &mut shadow_paragraphs,
+                    &shadow_paragraphs,
                     None,
                     blur_filter.as_ref(),
                     None,
                     None,
                 )?;
 
-                for (kind, stroke_paragraphs) in &mut stroke_shadow_groups {
+                for (kind, stroke_paragraphs) in &stroke_shadow_groups {
                     if *kind == StrokeKind::Inner {
                         // Inner stroke masked by the glyph fill (outset 0 here).
-                        let mut fill_builders =
-                            text_content.paragraph_builder_group_from_text(Some(true));
                         text::render_inner_stroke(
                             None,
                             Some(self.canvas),
                             shape,
                             stroke_paragraphs,
-                            &mut fill_builders,
+                            &shadow_paragraphs,
                             None,
                             blur_filter.as_ref(),
                             0.0,
@@ -239,7 +228,7 @@ impl ShapeRenderer for VectorRenderer<'_> {
         text::render_overlay_emoji(
             self.canvas,
             shape,
-            &mut paragraph_builders,
+            &fill_paragraphs,
             None,
             blur_filter.as_ref(),
             None,
@@ -249,49 +238,47 @@ impl ShapeRenderer for VectorRenderer<'_> {
         // Strokes for text
         let stroke_blur_outset = Stroke::max_bounds_width(shape.visible_strokes(), false);
 
-        for stroke in shape.visible_strokes().rev() {
-            let (mut stroke_paragraphs, layer_opacity) =
-                text::stroke_paragraph_builder_group_from_text(
-                    &text_content,
-                    stroke,
-                    &shape.selrect(),
-                    None,
-                );
-            if stroke.render_kind(false) == StrokeKind::Inner {
+        let stroke_groups: Vec<_> = shape
+            .visible_strokes()
+            .rev()
+            .map(|stroke| stroke.render_kind(false))
+            .zip(text_content.cached_stroke_paragraphs(shape, false))
+            .collect();
+        for (kind, (stroke_paragraphs, layer_opacity)) in &stroke_groups {
+            if *kind == StrokeKind::Inner {
                 // Inner text stroke: clip to the glyph fill, else it bleeds out.
-                let mut fill_builders = text_content.paragraph_builder_group_from_text(None);
                 text::render_inner_stroke(
                     None,
                     Some(self.canvas),
                     shape,
-                    &mut stroke_paragraphs,
-                    &mut fill_builders,
+                    stroke_paragraphs,
+                    &fill_paragraphs,
                     None,
                     blur_filter.as_ref(),
                     stroke_blur_outset,
-                    layer_opacity,
+                    *layer_opacity,
                 )?;
-            } else if stroke.render_kind(false) == StrokeKind::Outer {
+            } else if *kind == StrokeKind::Outer {
                 text::render_outer_stroke(
                     None,
                     Some(self.canvas),
                     shape,
-                    &mut stroke_paragraphs,
+                    stroke_paragraphs,
                     None,
                     blur_filter.as_ref(),
                     stroke_blur_outset,
-                    layer_opacity,
+                    *layer_opacity,
                 )?;
             } else {
                 text::render_with_bounds_outset_overlay_emoji(
                     self.canvas,
                     shape,
-                    &mut stroke_paragraphs,
+                    stroke_paragraphs,
                     None,
                     blur_filter.as_ref(),
                     stroke_blur_outset,
                     None,
-                    layer_opacity,
+                    *layer_opacity,
                 )?;
             }
         }
@@ -299,13 +286,13 @@ impl ShapeRenderer for VectorRenderer<'_> {
         // Inner shadows for text
         let inner_shadows: Vec<_> = shape.inner_shadows_visible().collect();
         if !inner_shadows.is_empty() {
-            let mut shadow_paragraphs = text_content.paragraph_builder_group_from_text(Some(true));
+            let shadow_paragraphs = text_content.cached_fill_shadow_paragraphs(shape);
             for shadow in &inner_shadows {
                 let shadow_paint = shadow.get_inner_shadow_paint(true, blur_filter.as_ref());
                 text::render_overlay_emoji(
                     self.canvas,
                     shape,
-                    &mut shadow_paragraphs,
+                    &shadow_paragraphs,
                     Some(&shadow_paint),
                     blur_filter.as_ref(),
                     None,

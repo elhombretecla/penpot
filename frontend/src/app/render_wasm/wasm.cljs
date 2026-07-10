@@ -31,6 +31,12 @@
 ;; When we're rendering in a sync way we want to stop the asynchrous `request-render`
 (defonce disable-request-render? (atom false))
 
+;; True while a WASM text-editing session is open (set on editor focus,
+;; cleared on dispose). Gates the per-frame editor work in the render loop
+;; (blink update, overlay render, event polling) so those FFI calls only run
+;; when a text is actually being edited.
+(defonce text-editor-active? (atom false))
+
 (defn module-ready?
   []
   (and internal-module (fn? (unchecked-get internal-module "_init"))))

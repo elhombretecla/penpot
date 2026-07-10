@@ -12,7 +12,6 @@
    [app.common.transit :as t]
    [app.common.types.shape :as shape]
    [app.common.types.shape.layout :as ctl]
-   [app.main.refs :as refs]
    [app.render-wasm.api :as api]
    [app.render-wasm.svg-filters :as svg-filters]
    [app.render-wasm.wasm :as wasm]
@@ -23,12 +22,6 @@
 (declare ^:private impl-assoc)
 (declare ^:private impl-conj)
 (declare ^:private impl-dissoc)
-
-(defn shape-in-current-page?
-  "Check if a shape is in the current page by looking up the current page objects"
-  [shape-id]
-  (let [objects (deref refs/workspace-page-objects)]
-    (contains? objects shape-id)))
 
 (defn map-entry
   [k v]
@@ -199,33 +192,15 @@
         :constraints-v
         (api/set-constraints-v v)
 
-        :r1
-        (api/set-shape-corners
-         [v
-          (dm/get-prop shape :r2)
-          (dm/get-prop shape :r3)
-          (dm/get-prop shape :r4)])
-
-        :r2
-        (api/set-shape-corners
-         [(dm/get-prop shape :r1)
-          v
-          (dm/get-prop shape :r3)
-          (dm/get-prop shape :r4)])
-
-        :r3
-        (api/set-shape-corners
-         [(dm/get-prop shape :r1)
-          (dm/get-prop shape :r2)
-          v
-          (dm/get-prop shape :r4)])
-
-        :r4
+        ;; Every corner key serializes the full current corner set, so a batch
+        ;; touching several of them is collapsed to one :corners entry by
+        ;; `normalize-props` before dispatch.
+        (:r1 :r2 :r3 :r4 :corners)
         (api/set-shape-corners
          [(dm/get-prop shape :r1)
           (dm/get-prop shape :r2)
           (dm/get-prop shape :r3)
-          v])
+          (dm/get-prop shape :r4)])
 
         :svg-attrs
         (do
@@ -317,27 +292,47 @@
         ;; Property not in WASM
         nil))))
 
+(def ^:private corner-props
+  #{:r1 :r2 :r3 :r4})
+
+(def ^:private svg-derived-props
+  #{:fills :blur :background-blur :shadow})
+
+(defn- normalize-props
+  "Collapse redundant attribute keys before dispatching to WASM:
+   - any of :r1..:r4 serializes the full corner set, so several of them in one
+     batch become a single :corners entry;
+   - the :svg-attrs case already re-pushes fills/blur/background-blur/shadows,
+     so those keys are dropped when :svg-attrs is present in the same batch."
+  [props]
+  (let [props (if (some corner-props props)
+                (-> (into (d/ordered-set) (remove corner-props) props)
+                    (conj :corners))
+                props)]
+    (if (contains? props :svg-attrs)
+      (into (d/ordered-set) (remove svg-derived-props) props)
+      props)))
+
 (defn process-shape!
+  "Push the changed `properties` of `shape` into WASM. The caller must have
+   verified the shape belongs to the current page."
   [shape properties]
-  (let [shape-id (dm/get-prop shape :id)]
-    (if (shape-in-current-page? shape-id)
-      (do
-        (api/use-shape shape-id)
-        (->> properties
-             (mapcat #(set-wasm-attr! shape %))
-             (d/index-by :key :callback)
-             (vals)
-             (rx/from)
-             (rx/mapcat (fn [callback] (callback)))
-             (rx/reduce conj [])))
-      (rx/empty))))
+  (api/use-shape (dm/get-prop shape :id))
+  (->> (normalize-props properties)
+       (mapcat #(set-wasm-attr! shape %))
+       (d/index-by :key :callback)
+       (vals)
+       (rx/from)
+       (rx/mapcat (fn [callback] (callback)))
+       (rx/reduce conj [])))
 
 (defn process-shape-changes!
   [objects shape-changes]
   (let [shape-changes
         (->> shape-changes
-             ;; We don't need to update the model for shapes not in the current page
-             (filter (fn [[shape-id _]] (shape-in-current-page? shape-id))))]
+             ;; We don't need to update the model for shapes not in the
+             ;; current page; `objects` is already the current page map.
+             (filter (fn [[shape-id _]] (contains? objects shape-id))))]
     (when (d/not-empty? shape-changes)
       (->> (rx/from shape-changes)
            (rx/mapcat (fn [[shape-id props]] (process-shape! (get objects shape-id) props)))

@@ -29,7 +29,10 @@ export EM_MEMORY_GROWTH_GEOMETRIC_STEP="0.8"
 # Default: dlmalloc
 export EM_MALLOC="dlmalloc"
 
+# -msimd128 keeps the emcc-compiled glue and Binaryen passes in sync with the
+# Rust-side `+simd128` target feature (see .cargo/config.toml).
 export EMCC_CFLAGS="--no-entry \
+    -msimd128 \
     --js-library src/js/wapi.js \
     -sMALLOC=$EM_MALLOC \
     -sINVOKE_RUN=0 \

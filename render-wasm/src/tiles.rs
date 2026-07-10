@@ -203,8 +203,12 @@ impl TileViewbox {
         self.interest = interest;
     }
 
+    /// Whether the tile is inside the *visible* viewport rect (NOT the
+    /// wider interest area). Used by `should_stop_rendering` to keep
+    /// rendering visible tiles without yielding during interactive
+    /// transforms; checking the interest ring here would extend main-thread
+    /// blocking to off-screen pre-render work.
     pub fn is_visible(&self, tile: &Tile) -> bool {
-        // TO CHECK self.interest_rect.contains(tile)
         self.visible_rect.contains(tile)
     }
 }
@@ -402,5 +406,50 @@ impl PendingTiles {
 
     pub fn pop(&mut self) -> Option<Tile> {
         self.list.pop()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tile_rect_len_matches_iter_count() {
+        let rect = TileRect(-1, -1, 2, 1);
+        assert_eq!(rect.len() as usize, rect.iter(true).count());
+    }
+
+    #[test]
+    fn degenerate_tile_rect_is_empty() {
+        let rect = TileRect(0, 0, -1, -1);
+        assert!(rect.is_degenerate());
+        assert_eq!(rect.iter(true).count(), 0);
+        assert_eq!(rect.len(), 0);
+    }
+
+    #[test]
+    fn tile_viewbox_visible_is_stricter_than_interest() {
+        let viewbox = Viewbox::new(1024., 1024.);
+        let tv = TileViewbox::new_with_interest(&viewbox, 1);
+        // A tile in the interest ring but outside the visible rect must not
+        // be reported as visible (should_stop_rendering depends on this).
+        let ring_tile = Tile::from(tv.visible_rect.x2() + 1, tv.visible_rect.y2());
+        assert!(tv.interest_rect.contains(&ring_tile));
+        assert!(!tv.is_visible(&ring_tile));
+    }
+
+    #[test]
+    fn tile_hash_map_add_remove_roundtrip() {
+        let mut map = TileHashMap::new();
+        let id = Uuid::nil();
+        let tile = Tile::from(3, 4);
+
+        map.add_shape_at(tile, id);
+        assert!(!map.is_empty_at(tile));
+        assert!(map.get_tiles_of(id).is_some_and(|t| t.contains(&tile)));
+
+        map.remove_shape_at(tile, id);
+        assert!(map.is_empty_at(tile));
+        assert!(map.get_tiles_of(id).is_some_and(|t| t.is_empty()));
     }
 }

@@ -1639,6 +1639,8 @@
 (dm/export dwv/sync-wasm-workspace-viewport)
 (dm/export dwv/start-panning)
 (dm/export dwv/finish-panning)
+(dm/export dwv/start-scrollbar-panning)
+(dm/export dwv/finish-scrollbar-panning)
 
 ;; Undo
 (dm/export dwu/reinitialize-undo)

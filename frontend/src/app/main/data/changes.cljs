@@ -141,8 +141,21 @@
                 (binding [cts/*shape-changes* shape-changes]
                   (update-in state [:files file-id :data] apply-changes))]
 
-            (let [objects (dm/get-in state [:files file-id :data :pages-index (:current-page-id state) :objects])]
-              (wasm.shape/process-shape-changes! objects @shape-changes))
+            (let [objects (dm/get-in state [:files file-id :data :pages-index (:current-page-id state) :objects])
+                  ;; Shapes that will be fully re-serialized by
+                  ;; `sync-wasm-structural-changes` (add-obj targets and
+                  ;; mov-objects parents) don't need the per-attribute push
+                  ;; too — dropping them avoids sending the same shape twice
+                  ;; in a single commit.
+                  structural-ids
+                  (into #{}
+                        (keep (fn [{:keys [type id parent-id]}]
+                                (case type
+                                  :add-obj id
+                                  :mov-objects parent-id
+                                  nil)))
+                        redo-changes)]
+              (wasm.shape/process-shape-changes! objects (reduce dissoc @shape-changes structural-ids)))
 
             state)
 

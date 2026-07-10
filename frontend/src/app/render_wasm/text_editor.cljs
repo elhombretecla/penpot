@@ -161,7 +161,8 @@
                         (aget buffer 1)
                         (aget buffer 2)
                         (aget buffer 3))
-        (throw (js/Error. "TextEditor focus failed"))))))
+        (throw (js/Error. "TextEditor focus failed")))
+      (reset! wasm/text-editor-active? true))))
 
 (defn text-editor-set-cursor-from-offset
   "Sets caret position from shape relative coordinates"
@@ -448,6 +449,7 @@
 
 (defn text-editor-dispose
   []
+  (reset! wasm/text-editor-active? false)
   (when wasm/context-initialized?
     (h/call wasm/internal-module "_text_editor_dispose")))
 

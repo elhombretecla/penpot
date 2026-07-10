@@ -37,6 +37,16 @@ pub fn get_font_collection() -> &'static FontCollection {
     with_state!(state, { state.font_collection() })
 }
 
+/// Generation counter of the font store; bumped on every font registration.
+pub fn get_font_generation() -> u64 {
+    get_render_state().fonts().generation()
+}
+
+/// Generation counter of the image store; bumped on every stored image.
+pub fn get_image_generation() -> u64 {
+    get_render_state().images.generation()
+}
+
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum Browser {

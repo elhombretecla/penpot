@@ -59,9 +59,38 @@ enum StoredImage {
     Gpu(Image),
 }
 
+impl StoredImage {
+    fn byte_size(&self) -> usize {
+        match self {
+            StoredImage::Raw(data) => data.len(),
+            // RGBA8 texture estimate.
+            StoredImage::Gpu(img) => (img.width() as usize) * (img.height() as usize) * 4,
+        }
+    }
+}
+
+struct StoredEntry {
+    image: StoredImage,
+    bytes: usize,
+    last_used_frame: u64,
+}
+
+/// Byte budget for decoded/uploaded images. Beyond it, least-recently-used
+/// entries are evicted (issue #7334: unbounded growth reached ~7 GB on large
+/// libraries). Evicted full-resolution images are reported so the frontend
+/// can re-fetch them on demand.
+const IMAGE_CACHE_BUDGET_BYTES: usize = 512 * 1024 * 1024;
+/// Entries used within this many frames are never evicted.
+const IMAGE_EVICTION_MIN_AGE_FRAMES: u64 = 8;
+
 pub struct ImageStore {
-    images: HashMap<(Uuid, bool), StoredImage>,
+    images: HashMap<(Uuid, bool), StoredEntry>,
     context: Box<DirectContext>,
+    /// Bumped on every stored image. Cached text layouts with image fills
+    /// key on this so they rebuild once their image arrives.
+    generation: u64,
+    total_bytes: usize,
+    current_frame: u64,
 }
 
 /// Creates a Skia image from an existing WebGL texture.
@@ -150,6 +179,89 @@ impl ImageStore {
         Self {
             images: HashMap::with_capacity(2048),
             context: Box::new(context.clone()),
+            generation: 0,
+            total_bytes: 0,
+            current_frame: 0,
+        }
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Called once per rAF so LRU stamps distinguish frames.
+    pub fn begin_frame(&mut self) {
+        self.current_frame = self.current_frame.wrapping_add(1);
+    }
+
+    fn insert_entry(&mut self, key: (Uuid, bool), image: StoredImage) {
+        let bytes = image.byte_size();
+        let entry = StoredEntry {
+            image,
+            bytes,
+            last_used_frame: self.current_frame,
+        };
+        if let Some(prev) = self.images.insert(key, entry) {
+            self.total_bytes = self.total_bytes.saturating_sub(prev.bytes);
+        }
+        self.total_bytes += bytes;
+        self.generation = self.generation.wrapping_add(1);
+        self.evict_over_budget();
+    }
+
+    /// Evicts entries until the byte budget is respected. Preference order:
+    /// 1. Thumbnails whose full-resolution image is present (never needed
+    ///    again — `get` always prefers the full image).
+    /// 2. Least-recently-used entries not touched in the last
+    ///    `IMAGE_EVICTION_MIN_AGE_FRAMES` frames. Evicted full images are
+    ///    reported to the frontend for on-demand re-fetch.
+    fn evict_over_budget(&mut self) {
+        if self.total_bytes <= IMAGE_CACHE_BUDGET_BYTES {
+            return;
+        }
+
+        // Pass 1: drop superseded thumbnails.
+        let superseded: Vec<(Uuid, bool)> = self
+            .images
+            .keys()
+            .filter(|(id, is_thumbnail)| *is_thumbnail && self.images.contains_key(&(*id, false)))
+            .copied()
+            .collect();
+        for key in superseded {
+            if let Some(prev) = self.images.remove(&key) {
+                self.total_bytes = self.total_bytes.saturating_sub(prev.bytes);
+            }
+        }
+        if self.total_bytes <= IMAGE_CACHE_BUDGET_BYTES {
+            return;
+        }
+
+        // Pass 2: LRU among entries old enough to be safely dropped.
+        let mut candidates: Vec<((Uuid, bool), u64, usize)> = self
+            .images
+            .iter()
+            .filter(|(_, e)| {
+                self.current_frame.saturating_sub(e.last_used_frame)
+                    >= IMAGE_EVICTION_MIN_AGE_FRAMES
+            })
+            .map(|(k, e)| (*k, e.last_used_frame, e.bytes))
+            .collect();
+        candidates.sort_unstable_by_key(|(_, last_used, _)| *last_used);
+
+        let mut evicted_full: Vec<Uuid> = Vec::new();
+        for (key, _, bytes) in candidates {
+            if self.total_bytes <= IMAGE_CACHE_BUDGET_BYTES {
+                break;
+            }
+            self.images.remove(&key);
+            self.total_bytes = self.total_bytes.saturating_sub(bytes);
+            if !key.1 {
+                evicted_full.push(key.0);
+            }
+        }
+
+        if !evicted_full.is_empty() {
+            crate::wapi::notify_images_evicted(&evicted_full);
         }
     }
 
@@ -168,9 +280,9 @@ impl ImageStore {
         let raw_data = image_data.to_vec();
 
         if let Some(gpu_image) = decode_image(&mut self.context, &raw_data) {
-            self.images.insert(key, StoredImage::Gpu(gpu_image));
+            self.insert_entry(key, StoredImage::Gpu(gpu_image));
         } else {
-            self.images.insert(key, StoredImage::Raw(raw_data));
+            self.insert_entry(key, StoredImage::Raw(raw_data));
         }
         Ok(())
     }
@@ -194,7 +306,7 @@ impl ImageStore {
 
         // Create a Skia image from the existing GL texture
         let image = create_image_from_gl_texture(&mut self.context, texture_id, width, height)?;
-        self.images.insert(key, StoredImage::Gpu(image));
+        self.insert_entry(key, StoredImage::Gpu(image));
 
         Ok(())
     }
@@ -220,20 +332,28 @@ impl ImageStore {
 
     fn get_internal(&mut self, id: &Uuid, is_thumbnail: bool) -> Option<&Image> {
         let key = (*id, is_thumbnail);
+        let current_frame = self.current_frame;
         // Use entry API to mutate the HashMap in-place if needed
         if let Some(entry) = self.images.get_mut(&key) {
-            match entry {
-                StoredImage::Gpu(ref img) => Some(img),
+            entry.last_used_frame = current_frame;
+            match &mut entry.image {
+                StoredImage::Gpu(_) => {}
                 StoredImage::Raw(raw_data) => {
                     let gpu_image = decode_image(&mut self.context, raw_data)?;
-                    *entry = StoredImage::Gpu(gpu_image);
-
-                    if let StoredImage::Gpu(ref img) = entry {
-                        Some(img)
-                    } else {
-                        None
-                    }
+                    let new_bytes =
+                        (gpu_image.width() as usize) * (gpu_image.height() as usize) * 4;
+                    let old_bytes = entry.bytes;
+                    entry.image = StoredImage::Gpu(gpu_image);
+                    entry.bytes = new_bytes;
+                    self.total_bytes = self
+                        .total_bytes
+                        .saturating_sub(old_bytes)
+                        .saturating_add(new_bytes);
                 }
+            }
+            match &entry.image {
+                StoredImage::Gpu(ref img) => Some(img),
+                _ => None,
             }
         } else {
             None

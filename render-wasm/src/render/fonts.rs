@@ -1,4 +1,5 @@
 use skia_safe::{self as skia, textlayout, Font, FontMgr};
+use std::cell::Cell;
 use std::collections::HashSet;
 
 use crate::error::{Error, Result};
@@ -26,6 +27,17 @@ pub struct FontStore {
     debug_font: Font,
     ui_font: Font,
     fallback_fonts: HashSet<String>,
+    /// Registered font names (family alias, or the shared emoji alias) for
+    /// O(1) `has_family` checks instead of scanning the provider names.
+    registered: HashSet<String>,
+    /// Set when a font is registered; the shaping caches of the (shared)
+    /// FontCollection are flushed lazily on the next `font_collection()`
+    /// access instead of once per `add` — bulk font loads would otherwise
+    /// discard the whole cache N times in a row.
+    caches_dirty: Cell<bool>,
+    /// Bumped on every successful font registration. Cached text layouts
+    /// key on this so they rebuild once the fonts they may depend on load.
+    generation: u64,
 }
 
 impl FontStore {
@@ -48,6 +60,9 @@ impl FontStore {
             .ok_or(Error::CriticalError("Failed to load UI font".to_string()))?;
         let ui_font = skia::Font::new(ui_typeface, 12.0);
 
+        let mut registered = HashSet::new();
+        registered.insert(default_font());
+
         Ok(Self {
             font_mgr,
             font_provider,
@@ -55,6 +70,9 @@ impl FontStore {
             debug_font,
             ui_font,
             fallback_fonts: HashSet::new(),
+            registered,
+            caches_dirty: Cell::new(false),
+            generation: 0,
         })
     }
 
@@ -68,6 +86,13 @@ impl FontStore {
     }
 
     pub fn font_collection(&self) -> &textlayout::FontCollection {
+        if self.caches_dirty.get() {
+            self.caches_dirty.set(false);
+            // FontCollection is a refcounted handle to a shared native
+            // object; clearing through a clone clears the same caches.
+            let mut collection = self.font_collection.clone();
+            collection.clear_caches();
+        }
         &self.font_collection
     }
 
@@ -105,7 +130,9 @@ impl FontStore {
         };
 
         self.font_provider.register_typeface(typeface, font_name);
-        self.font_collection.clear_caches();
+        self.registered.insert(font_name.to_string());
+        self.caches_dirty.set(true);
+        self.generation = self.generation.wrapping_add(1);
 
         if is_fallback {
             self.fallback_fonts.insert(alias);
@@ -115,17 +142,19 @@ impl FontStore {
     }
 
     pub fn has_family(&self, family: &FontFamily, is_emoji: bool) -> bool {
-        let alias = format!("{}", family);
-        let font_name = if is_emoji {
-            DEFAULT_EMOJI_FONT
+        if is_emoji {
+            self.registered.contains(DEFAULT_EMOJI_FONT)
         } else {
-            alias.as_str()
-        };
-        self.font_provider.family_names().any(|x| x == font_name)
+            self.registered.contains(&family.alias())
+        }
     }
 
     pub fn get_fallback(&self) -> &HashSet<String> {
         &self.fallback_fonts
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     pub fn get_emoji_font(&self, _size: f32) -> Option<Font> {

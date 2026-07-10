@@ -1,6 +1,6 @@
 use super::{RenderState, SurfaceId};
 use crate::render::strokes;
-use crate::shapes::{ParagraphBuilderGroup, Shadow, Shape, Stroke, StrokeKind, TextContent, Type};
+use crate::shapes::{Shadow, Shape, SharedParagraphs, Stroke, StrokeKind, TextContent, Type};
 use skia_safe::{canvas::SaveLayerRec, Paint, Path};
 
 use crate::error::Result;
@@ -131,8 +131,8 @@ fn render_shadow_paint(
 pub fn render_text_shadows(
     render_state: &mut RenderState,
     shape: &Shape,
-    paragraphs: &mut [ParagraphBuilderGroup],
-    stroke_paragraphs_group: &mut [Vec<ParagraphBuilderGroup>],
+    paragraphs: &SharedParagraphs,
+    stroke_paragraphs_group: &[(SharedParagraphs, Option<f32>)],
     surface_id: Option<SurfaceId>,
     shadows: &[Paint],
     blur_filter: &Option<skia_safe::ImageFilter>,
@@ -142,6 +142,9 @@ pub fn render_text_shadows(
     if stroke_paragraphs_group.is_empty() {
         return Ok(());
     }
+
+    // Alpha-stripped fill used to mask inner strokes inside shadow layers.
+    let shadow_fill = text_content.cached_fill_shadow_paragraphs(shape);
 
     let canvas = render_state
         .surfaces
@@ -163,15 +166,14 @@ pub fn render_text_shadows(
             None,
         )?;
 
-        for (i, stroke_paragraphs) in stroke_paragraphs_group.iter_mut().enumerate() {
+        for (i, (stroke_paragraphs, _)) in stroke_paragraphs_group.iter().enumerate() {
             if i < stroke_kinds.len() && stroke_kinds[i] == StrokeKind::Inner {
-                let mut fill_builders = text_content.paragraph_builder_group_from_text(Some(true));
                 text::render_inner_stroke(
                     None,
                     Some(canvas),
                     shape,
                     stroke_paragraphs,
-                    &mut fill_builders,
+                    &shadow_fill,
                     surface_id,
                     blur_filter.as_ref(),
                     0.0,

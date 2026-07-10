@@ -87,12 +87,18 @@
   "Applies SVG-derived effects (fills, blur, shadows) uniformly.
   - Keeps user fills if present; otherwise derives from SVG.
   - Converts SVG filters into native blur/shadow when needed.
-  - Always returns shape with :fills (possibly []) and blur/shadow keys."
+  - Always returns shape with :fills (possibly []) and blur/shadow keys.
+
+  Every derivation source requires `:svg-attrs`, so shapes without them are
+  returned untouched — this runs once per shape on every full load, so the
+  fast path matters."
   [shape]
-  (let [shape' (apply-svg-filters shape)
-        fills  (or (svg-fills/resolve-shape-fills shape') [])]
-    (assoc shape'
-           :fills fills
-           :blur (:blur shape')
-           :shadow (:shadow shape'))))
+  (if-not (contains? shape :svg-attrs)
+    shape
+    (let [shape' (apply-svg-filters shape)
+          fills  (or (svg-fills/resolve-shape-fills shape') [])]
+      (assoc shape'
+             :fills fills
+             :blur (:blur shape')
+             :shadow (:shadow shape')))))
 

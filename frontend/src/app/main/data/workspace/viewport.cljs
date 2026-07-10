@@ -234,3 +234,29 @@
     ptk/EffectEvent
     (effect [_ state _]
       (dwvw/maybe-view-interaction-end! state))))
+
+;; Scrollbar drags move the viewport exactly like a pan, but they don't go
+;; through start-panning/finish-panning. Without these events the WASM
+;; renderer never learns the gesture is active, so its debounced
+;; render-finish fires mid-drag (full-quality render + interaction end while
+;; the pointer is still down), causing visible stutter.
+
+(defn start-scrollbar-panning []
+  (ptk/reify ::start-scrollbar-panning
+    ptk/UpdateEvent
+    (update [_ state]
+      (assoc-in state [:workspace-local :scrolling] true))
+
+    ptk/EffectEvent
+    (effect [_ state _]
+      (dwvw/maybe-view-interaction-start! state))))
+
+(defn finish-scrollbar-panning []
+  (ptk/reify ::finish-scrollbar-panning
+    ptk/UpdateEvent
+    (update [_ state]
+      (update state :workspace-local dissoc :scrolling))
+
+    ptk/EffectEvent
+    (effect [_ state _]
+      (dwvw/maybe-view-interaction-end! state))))

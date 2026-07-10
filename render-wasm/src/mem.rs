@@ -40,7 +40,11 @@ pub fn write_bytes(mut bytes: Vec<u8>) -> *mut u8 {
         performance::begin_measure!("write_bytes");
         #[allow(static_mut_refs)]
         if BUFFERU8.is_some() {
-            panic!("Bytes already allocated");
+            // A previous payload was never consumed: this is a protocol bug
+            // in the caller, but killing the whole renderer over it is worse
+            // than dropping the stale buffer. Surface it loudly in debug.
+            debug_assert!(false, "mem::write_bytes: previous buffer not consumed");
+            BUFFERU8 = None;
         }
 
         let ptr = bytes.as_mut_ptr();

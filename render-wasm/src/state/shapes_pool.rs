@@ -59,6 +59,9 @@ pub struct ShapesPoolImpl {
     structure: HashMap<usize, Vec<StructureEntry>>,
     /// Scale content values, keyed by index
     scale_content: HashMap<usize, f32>,
+    /// Number of shapes currently soft-deleted (`mark_deleted`). Deleted
+    /// shapes keep their pool slot until `maybe_compact` reclaims it.
+    deleted_count: usize,
 }
 
 // Type aliases - no longer need lifetimes!
@@ -78,7 +81,81 @@ impl ShapesPoolImpl {
             modifier_uuids: Vec::new(),
             structure: HashMap::default(),
             scale_content: HashMap::default(),
+            deleted_count: 0,
         }
+    }
+
+    /// Soft-deletes a shape, keeping its slot for potential undelete until
+    /// the next compaction.
+    pub fn mark_deleted(&mut self, id: &Uuid) {
+        if let Some(shape) = self.get_mut(id) {
+            if !shape.deleted() {
+                shape.set_deleted(true);
+                self.deleted_count += 1;
+            }
+        }
+    }
+
+    /// Reverses a soft delete (e.g. a child listed again by its parent).
+    pub fn mark_undeleted(&mut self, id: &Uuid) {
+        if let Some(shape) = self.get_mut(id) {
+            if shape.deleted() {
+                shape.set_deleted(false);
+                self.deleted_count = self.deleted_count.saturating_sub(1);
+            }
+        }
+    }
+
+    /// Physically reclaims pool slots when enough garbage accumulated:
+    /// soft-deleted shapes and slots left unreachable by uuid re-insertion.
+    /// Only runs when no transient per-frame state is active (modifiers /
+    /// structure / scale-content maps are index-keyed and would be
+    /// invalidated by the reindex). Undo re-creates deleted shapes through
+    /// the regular structural sync, so dropping their data is safe.
+    pub fn maybe_compact(&mut self) -> bool {
+        let live = self.uuid_to_idx.len();
+        let garbage = self
+            .counter
+            .saturating_sub(live)
+            .saturating_add(self.deleted_count);
+        if garbage <= 1024.max(live / 2) {
+            return false;
+        }
+        if !self.modifiers.is_empty()
+            || !self.structure.is_empty()
+            || !self.scale_content.is_empty()
+        {
+            return false;
+        }
+
+        performance::begin_measure!("shapes_pool_compact");
+        self.modified_shape_cache.clear();
+
+        // Collect the reachable, non-deleted shapes in slot order so parent/
+        // child relative ordering is preserved.
+        let mut keep: Vec<usize> = self
+            .uuid_to_idx
+            .values()
+            .copied()
+            .filter(|idx| !self.shapes[*idx].deleted())
+            .collect();
+        keep.sort_unstable();
+
+        let old_shapes = std::mem::take(&mut self.shapes);
+        let mut old_shapes: Vec<Option<Shape>> = old_shapes.into_iter().map(Some).collect();
+
+        self.shapes = Vec::with_capacity(keep.len() + keep.len() / 2);
+        self.uuid_to_idx = HashMap::with_capacity(keep.len());
+        for old_idx in keep {
+            if let Some(shape) = old_shapes[old_idx].take() {
+                self.uuid_to_idx.insert(shape.id, self.shapes.len());
+                self.shapes.push(shape);
+            }
+        }
+        self.counter = self.shapes.len();
+        self.deleted_count = 0;
+        performance::end_measure!("shapes_pool_compact");
+        true
     }
 
     pub fn initialize(&mut self, capacity: usize) {
@@ -402,6 +479,7 @@ impl ShapesPoolImpl {
             modifier_uuids: Vec::new(),
             structure: HashMap::default(),
             scale_content: HashMap::default(),
+            deleted_count: 0,
         }
     }
 
@@ -484,6 +562,64 @@ impl Clone for ShapesPoolImpl {
             modifier_uuids: self.modifier_uuids.clone(),
             structure: self.structure.clone(),
             scale_content: self.scale_content.clone(),
+            deleted_count: self.deleted_count,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_uuid(n: u32) -> Uuid {
+        crate::utils::uuid_from_u32_quartet(n, 0, 0, 1)
+    }
+
+    #[test]
+    fn compaction_reclaims_deleted_slots() {
+        let mut pool = ShapesPoolImpl::new();
+        pool.initialize(4096);
+        let total = 3000usize;
+        for i in 0..total {
+            pool.add_shape(make_uuid(i as u32));
+        }
+        assert_eq!(pool.len(), total);
+
+        // Soft-delete two thirds of the shapes.
+        let deleted = 2000usize;
+        for i in 0..deleted {
+            pool.mark_deleted(&make_uuid(i as u32));
+        }
+        assert_eq!(pool.len(), total, "soft delete keeps the index entries");
+
+        assert!(pool.maybe_compact());
+        assert_eq!(pool.len(), total - deleted);
+        // Deleted shapes are gone; survivors remain reachable.
+        assert!(pool.get(&make_uuid(0)).is_none());
+        assert!(pool.get(&make_uuid(deleted as u32)).is_some());
+        assert!(pool.get(&make_uuid((total - 1) as u32)).is_some());
+    }
+
+    #[test]
+    fn compaction_skips_small_garbage() {
+        let mut pool = ShapesPoolImpl::new();
+        pool.initialize(64);
+        for i in 0..10 {
+            pool.add_shape(make_uuid(i));
+        }
+        pool.mark_deleted(&make_uuid(0));
+        assert!(!pool.maybe_compact(), "below threshold: no compaction");
+        assert_eq!(pool.len(), 10);
+    }
+
+    #[test]
+    fn undelete_restores_shape() {
+        let mut pool = ShapesPoolImpl::new();
+        pool.initialize(8);
+        pool.add_shape(make_uuid(1));
+        pool.mark_deleted(&make_uuid(1));
+        assert!(pool.get(&make_uuid(1)).is_some_and(|s| s.deleted()));
+        pool.mark_undeleted(&make_uuid(1));
+        assert!(pool.get(&make_uuid(1)).is_some_and(|s| !s.deleted()));
     }
 }

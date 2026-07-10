@@ -18,13 +18,16 @@ use skia_safe::{
     Contains,
 };
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
+use std::rc::Rc;
 
 use super::FontFamily;
 use crate::math::Point;
-use crate::shapes::{self, merge_fills, Shape, VerticalAlign};
-use crate::utils::{get_fallback_fonts, get_font_collection};
+use crate::shapes::{self, merge_fills, Fill, Shape, Stroke, VerticalAlign};
+use crate::utils::{
+    get_fallback_fonts, get_font_collection, get_font_generation, get_image_generation,
+};
 use crate::Uuid;
 
 // TODO: maybe move this to the wasm module?
@@ -243,6 +246,84 @@ impl TextContentLayout {
     }
 }
 
+/// Shared handle to built + laid-out Skia paragraphs for one render variant.
+/// Shaping (the expensive step, done inside `Paragraph::layout` on first
+/// call) happens once per content/style change instead of once per tile per
+/// frame; consumers borrow mutably only while painting.
+pub type SharedParagraphs = Rc<RefCell<Vec<Vec<skia::textlayout::Paragraph>>>>;
+
+/// Validity key for the cached paragraph variants of a text.
+#[derive(Debug, Clone, PartialEq)]
+struct VariantCacheKey {
+    content_version: u64,
+    /// Layout width used to line-break the paragraphs.
+    width_bits: u32,
+    font_generation: u64,
+    /// Snapshot of the visible strokes at build time (stroke variants bake
+    /// stroke paints into the paragraphs).
+    strokes: Vec<Stroke>,
+    /// Present only when some fill is position-dependent (gradients/images
+    /// bake absolute doc coordinates into the paint shader): (x, y, w, h)
+    /// bits of the text bounds.
+    bounds_bits: Option<(u32, u32, u32, u32)>,
+    /// Present only when some fill is an image fill: images may finish
+    /// loading after the paragraphs were built.
+    image_generation: Option<u64>,
+}
+
+/// Per-variant cache of built paragraphs. Shared (via `Rc`) between a stored
+/// shape and its per-frame render clones so drags reuse the shaping work.
+#[derive(Debug, Default)]
+pub struct TextVariantCache {
+    key: Option<VariantCacheKey>,
+    fill: Option<SharedParagraphs>,
+    fill_shadow: Option<SharedParagraphs>,
+    opaque: Option<SharedParagraphs>,
+    strokes: Option<Vec<(SharedParagraphs, Option<f32>)>>,
+    strokes_shadow: Option<Vec<(SharedParagraphs, Option<f32>)>>,
+}
+
+impl TextVariantCache {
+    fn clear(&mut self) {
+        self.fill = None;
+        self.fill_shadow = None;
+        self.opaque = None;
+        self.strokes = None;
+        self.strokes_shadow = None;
+    }
+
+    /// Re-line-break every cached variant at a new width. Skia keeps the
+    /// shaped clusters inside the Paragraph, so this skips re-shaping.
+    fn relayout_all(&mut self, width: f32) {
+        let handles = self
+            .fill
+            .iter()
+            .chain(self.fill_shadow.iter())
+            .chain(self.opaque.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        for handle in handles {
+            for group in handle.borrow_mut().iter_mut() {
+                for paragraph in group.iter_mut() {
+                    paragraph.layout(width);
+                }
+            }
+        }
+        for list in [self.strokes.as_ref(), self.strokes_shadow.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            for (handle, _) in list.iter() {
+                for group in handle.borrow_mut().iter_mut() {
+                    for paragraph in group.iter_mut() {
+                        paragraph.layout(width);
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TextDecorationSegment {
     #[allow(dead_code)]
@@ -342,6 +423,9 @@ pub struct TextContent {
     content_version: u64,
     layout_version: u64,
     layout_width: Option<f32>,
+    /// Built-paragraph cache shared between the stored shape and its
+    /// per-frame render clones (`derive(Clone)` clones the `Rc`).
+    variant_cache: Rc<RefCell<TextVariantCache>>,
 }
 
 impl PartialEq for TextContent {
@@ -365,6 +449,7 @@ impl TextContent {
             content_version: 0,
             layout_version: 0,
             layout_width: None,
+            variant_cache: Rc::new(RefCell::new(TextVariantCache::default())),
         }
     }
 
@@ -377,9 +462,13 @@ impl TextContent {
             grow_type,
             size: TextContentSize::new_with_size(bounds.width(), bounds.height()),
             layout: TextContentLayout::new(),
-            content_version: 0,
+            // Content is identical to `self`: share the paragraph cache and
+            // keep the same version so a pure bounds change re-line-breaks
+            // the cached paragraphs instead of re-shaping them.
+            content_version: self.content_version,
             layout_version: 0,
             layout_width: None,
+            variant_cache: Rc::clone(&self.variant_cache),
         }
     }
 
@@ -414,10 +503,6 @@ impl TextContent {
 
     pub fn width(&self) -> f32 {
         self.size.width
-    }
-
-    pub fn normalized_line_height(&self) -> f32 {
-        self.size.normalized_line_height
     }
 
     pub fn grow_type(&self) -> GrowType {
@@ -898,6 +983,190 @@ impl TextContent {
     pub fn force_next_layout_update(&mut self) {
         self.layout_width = None;
         self.layout.cached_extrect.set(None);
+        self.variant_cache.borrow_mut().clear();
+    }
+
+    /// Gives this content its own (empty) variant cache. Used when a render
+    /// clone diverges from the original in ways the cache key cannot see
+    /// (e.g. `scale_content`, which rescales font sizes in place per frame).
+    pub fn detach_variant_cache(&mut self) {
+        self.variant_cache = Rc::new(RefCell::new(TextVariantCache::default()));
+    }
+
+    /// Scans span and stroke fills: returns (position_dependent, has_image).
+    /// Gradient/image fills bake absolute doc coordinates into the paint
+    /// shader, so cached paragraphs using them are only valid at the exact
+    /// bounds they were built with.
+    fn fill_dependencies(&self, shape: &Shape) -> (bool, bool) {
+        let mut position_dependent = false;
+        let mut has_image = false;
+        let mut scan = |fill: &Fill| match fill {
+            Fill::Solid(_) => {}
+            Fill::Image(_) => {
+                position_dependent = true;
+                has_image = true;
+            }
+            _ => position_dependent = true,
+        };
+        for paragraph in self.paragraphs() {
+            for span in paragraph.children() {
+                for fill in span.fills.iter() {
+                    scan(fill);
+                }
+            }
+        }
+        for stroke in shape.visible_strokes() {
+            scan(&stroke.fill);
+        }
+        (position_dependent, has_image)
+    }
+
+    fn variant_cache_key(&self, shape: &Shape) -> VariantCacheKey {
+        let (position_dependent, has_image) = self.fill_dependencies(shape);
+        let width = self.layout_width_for(shape);
+        VariantCacheKey {
+            content_version: self.content_version,
+            width_bits: width.to_bits(),
+            font_generation: get_font_generation(),
+            strokes: shape.visible_strokes().cloned().collect(),
+            bounds_bits: position_dependent.then(|| {
+                let b = self.bounds();
+                (
+                    b.x().to_bits(),
+                    b.y().to_bits(),
+                    b.width().to_bits(),
+                    b.height().to_bits(),
+                )
+            }),
+            image_generation: has_image.then(get_image_generation),
+        }
+    }
+
+    /// Validates the variant cache against the current content/bounds/fonts/
+    /// strokes. A pure width change re-line-breaks the cached paragraphs
+    /// (cheap, no re-shaping); anything else clears the cache.
+    fn ensure_variant_cache(&self, shape: &Shape) {
+        let key = self.variant_cache_key(shape);
+        let mut cache = self.variant_cache.borrow_mut();
+        match cache.key.as_ref() {
+            Some(k) if *k == key => {}
+            Some(k)
+                if k.content_version == key.content_version
+                    && k.font_generation == key.font_generation
+                    && k.strokes == key.strokes
+                    && k.bounds_bits == key.bounds_bits
+                    && k.image_generation == key.image_generation =>
+            {
+                cache.relayout_all(f32::from_bits(key.width_bits));
+                cache.key = Some(key);
+            }
+            _ => {
+                cache.clear();
+                cache.key = Some(key);
+            }
+        }
+    }
+
+    fn layout_width_for(&self, shape: &Shape) -> f32 {
+        // IMPORTANT: use the shape's STORED content for the width, not
+        // `self`: render passes may operate on a re-bounded copy whose
+        // `size` mirrors the selrect instead of the measured layout size,
+        // and for auto-width texts `get_width` returns `size.width`. The
+        // legacy paint path always laid out at the stored content's width;
+        // masks, strokes and fills must keep using one consistent width or
+        // masked strokes stop lining up with their fills.
+        let content = match &shape.shape_type {
+            shapes::Type::Text(content) => content,
+            _ => self,
+        };
+        content.get_width(shape.selrect().width())
+    }
+
+    /// Built + laid-out paragraphs for the plain fill pass.
+    pub fn cached_fill_paragraphs(&self, shape: &Shape) -> SharedParagraphs {
+        self.ensure_variant_cache(shape);
+        let mut cache = self.variant_cache.borrow_mut();
+        if cache.fill.is_none() {
+            let mut builders = self.paragraph_builder_group_from_text(None);
+            let built = build_paragraphs_from_paragraph_builders(
+                &mut builders,
+                self.layout_width_for(shape),
+            );
+            cache.fill = Some(Rc::new(RefCell::new(built)));
+        }
+        Rc::clone(cache.fill.as_ref().unwrap())
+    }
+
+    /// Fill paragraphs with alpha stripped, used inside shadow layers.
+    pub fn cached_fill_shadow_paragraphs(&self, shape: &Shape) -> SharedParagraphs {
+        self.ensure_variant_cache(shape);
+        let mut cache = self.variant_cache.borrow_mut();
+        if cache.fill_shadow.is_none() {
+            let mut builders = self.paragraph_builder_group_from_text(Some(true));
+            let built = build_paragraphs_from_paragraph_builders(
+                &mut builders,
+                self.layout_width_for(shape),
+            );
+            cache.fill_shadow = Some(Rc::new(RefCell::new(built)));
+        }
+        Rc::clone(cache.fill_shadow.as_ref().unwrap())
+    }
+
+    /// Always-opaque paragraphs used as glyph masks (emoji overlay, inner/
+    /// outer stroke masking).
+    pub fn cached_opaque_paragraphs(&self, shape: &Shape) -> SharedParagraphs {
+        self.ensure_variant_cache(shape);
+        let mut cache = self.variant_cache.borrow_mut();
+        if cache.opaque.is_none() {
+            let mut builders = self.paragraph_builder_group_opaque();
+            let built = build_paragraphs_from_paragraph_builders(
+                &mut builders,
+                self.layout_width_for(shape),
+            );
+            cache.opaque = Some(Rc::new(RefCell::new(built)));
+        }
+        Rc::clone(cache.opaque.as_ref().unwrap())
+    }
+
+    /// One entry per visible stroke (in `visible_strokes().rev()` order, the
+    /// paint order used by the renderer), with the group layer opacity.
+    pub fn cached_stroke_paragraphs(
+        &self,
+        shape: &Shape,
+        use_shadow: bool,
+    ) -> Vec<(SharedParagraphs, Option<f32>)> {
+        self.ensure_variant_cache(shape);
+        let mut cache = self.variant_cache.borrow_mut();
+        let slot = if use_shadow {
+            &mut cache.strokes_shadow
+        } else {
+            &mut cache.strokes
+        };
+        if slot.is_none() {
+            let width = self.layout_width_for(shape);
+            let shadow_arg = use_shadow.then_some(true);
+            let built: Vec<(SharedParagraphs, Option<f32>)> = shape
+                .visible_strokes()
+                .rev()
+                .map(|stroke| {
+                    let (mut builders, opacity) =
+                        crate::render::text::stroke_paragraph_builder_group_from_text(
+                            self,
+                            stroke,
+                            &shape.selrect(),
+                            shadow_arg,
+                        );
+                    let paragraphs = build_paragraphs_from_paragraph_builders(&mut builders, width);
+                    (Rc::new(RefCell::new(paragraphs)), opacity)
+                })
+                .collect();
+            *slot = Some(built);
+        }
+        slot.as_ref()
+            .unwrap()
+            .iter()
+            .map(|(handle, opacity)| (Rc::clone(handle), *opacity))
+            .collect()
     }
 
     pub fn update_layout(&mut self, selrect: Rect) -> TextContentSize {
@@ -1074,6 +1343,7 @@ impl Default for TextContent {
             content_version: 0,
             layout_version: 0,
             layout_width: None,
+            variant_cache: Rc::new(RefCell::new(TextVariantCache::default())),
         }
     }
 }
@@ -1399,9 +1669,14 @@ pub struct PositionData {
     pub direction: u32,
 }
 
+/// Placement of one built paragraph: indices into the built groups plus the
+/// paint origin and the decoration segments. Holding indices (instead of the
+/// `Paragraph` itself) lets the built paragraphs live in the shared variant
+/// cache and be reused across tiles and frames.
 #[derive(Debug)]
-pub struct ParagraphLayout {
-    pub paragraph: skia::textlayout::Paragraph,
+pub struct ParagraphPlacement {
+    pub group: usize,
+    pub item: usize,
     pub x: f32,
     pub y: f32,
     pub decorations: Vec<TextDecorationSegment>,
@@ -1410,7 +1685,7 @@ pub struct ParagraphLayout {
 #[derive(Debug)]
 pub struct TextLayoutData {
     pub position_data: Vec<PositionData>,
-    pub paragraphs: Vec<ParagraphLayout>,
+    pub placements: Vec<ParagraphPlacement>,
 }
 
 fn direction_to_int(direction: TextDirection) -> u32 {
@@ -1420,47 +1695,27 @@ fn direction_to_int(direction: TextDirection) -> u32 {
     }
 }
 
+/// Positions already built + laid-out paragraphs (see the variant cache on
+/// `TextContent`): computes per-paragraph paint origins, decoration segments
+/// and (optionally) editor position data. Shaping never happens here.
 pub fn calculate_text_layout_data(
     shape: &Shape,
     text_content: &TextContent,
-    paragraph_builder_groups: &mut [ParagraphBuilderGroup],
+    built_groups: &mut [Vec<skia::textlayout::Paragraph>],
     skip_position_data: bool,
 ) -> TextLayoutData {
-    let selrect_width = shape.selrect().width();
-    let text_width = text_content.get_width(selrect_width);
     let selrect_height = shape.selrect().height();
     let x = shape.selrect.x();
     let base_y = shape.selrect.y();
     let mut position_data: Vec<PositionData> = Vec::new();
-    let mut previous_line_height = text_content.normalized_line_height();
     let text_paragraphs = text_content.paragraphs();
 
-    // 1. Build + layout each paragraph once, recording heights as we go.
-    let mut paragraph_heights: Vec<f32> = Vec::new();
-    let mut built_groups: Vec<Vec<skia::textlayout::Paragraph>> =
-        Vec::with_capacity(paragraph_builder_groups.len());
-    for paragraph_builder_group in paragraph_builder_groups.iter_mut() {
-        let group_len = paragraph_builder_group.len();
-        let mut paragraph_offset_y = previous_line_height;
-        let mut group_paragraphs: Vec<skia::textlayout::Paragraph> = Vec::with_capacity(group_len);
-        for (builder_index, paragraph_builder) in paragraph_builder_group.iter_mut().enumerate() {
-            let mut skia_paragraph = paragraph_builder.build();
-            skia_paragraph.layout(text_width);
-            if builder_index == group_len - 1 {
-                if skia_paragraph.get_line_metrics().is_empty() {
-                    paragraph_offset_y = skia_paragraph.ideographic_baseline();
-                } else {
-                    paragraph_offset_y = skia_paragraph.height();
-                }
-            }
-            if builder_index == 0 {
-                paragraph_heights.push(skia_paragraph.height());
-            }
-            group_paragraphs.push(skia_paragraph);
-        }
-        previous_line_height = paragraph_offset_y;
-        built_groups.push(group_paragraphs);
-    }
+    // 1. Record group heights (the first item of each group is the height
+    // reference, matching the previous build-time behavior).
+    let paragraph_heights: Vec<f32> = built_groups
+        .iter()
+        .map(|group| group.first().map_or(0.0, |p| p.height()))
+        .collect();
 
     // 2. Position each built paragraph using the heights from step 1.
     let total_text_height: f32 = paragraph_heights.iter().sum();
@@ -1469,11 +1724,11 @@ pub fn calculate_text_layout_data(
         VerticalAlign::Bottom => selrect_height - total_text_height,
         _ => 0.0,
     };
-    let mut paragraph_layouts: Vec<ParagraphLayout> = Vec::new();
+    let mut paragraph_layouts: Vec<ParagraphPlacement> = Vec::new();
     let mut y_accum = base_y + vertical_offset;
-    for (i, group_paragraphs) in built_groups.into_iter().enumerate() {
+    for (i, group_paragraphs) in built_groups.iter_mut().enumerate() {
         // For each paragraph in the group (e.g., fill, stroke, etc.)
-        for skia_paragraph in group_paragraphs.into_iter() {
+        for (item, skia_paragraph) in group_paragraphs.iter_mut().enumerate() {
             // Calculate text decorations for this paragraph
             let mut decorations = Vec::new();
             let line_metrics = skia_paragraph.get_line_metrics();
@@ -1536,8 +1791,9 @@ pub fn calculate_text_layout_data(
                     }
                 }
             }
-            paragraph_layouts.push(ParagraphLayout {
-                paragraph: skia_paragraph,
+            paragraph_layouts.push(ParagraphPlacement {
+                group: i,
+                item,
                 x,
                 y: y_accum,
                 decorations,
@@ -1546,10 +1802,12 @@ pub fn calculate_text_layout_data(
         y_accum += paragraph_heights[i];
     }
 
-    // Calculate position data from paragraph_layouts
+    // Calculate position data from the placements
     if !skip_position_data {
-        for (paragraph_index, para_layout) in paragraph_layouts.iter().enumerate() {
-            let current_y = para_layout.y;
+        for placement in paragraph_layouts.iter() {
+            let paragraph_index = placement.group;
+            let skia_paragraph = &built_groups[placement.group][placement.item];
+            let current_y = placement.y;
             let text_paragraph = text_paragraphs.get(paragraph_index);
             if let Some(text_para) = text_paragraph {
                 let mut span_ranges: Vec<(usize, usize, usize)> = vec![];
@@ -1561,7 +1819,7 @@ pub fn calculate_text_layout_data(
                     cur += text_len;
                 }
                 for (start, end, span_index) in span_ranges {
-                    let rects = para_layout.paragraph.get_rects_for_range(
+                    let rects = skia_paragraph.get_rects_for_range(
                         start..end,
                         RectHeightStyle::Tight,
                         RectWidthStyle::Tight,
@@ -1573,14 +1831,12 @@ pub fn calculate_text_layout_data(
                         let cy = rect.top + rect.height() / 2.0;
 
                         // Get byte positions from Skia's transformed text layout
-                        let start_pos = para_layout
-                            .paragraph
+                        let start_pos = skia_paragraph
                             .get_glyph_position_at_coordinate((rect.left + 0.1, cy))
                             .position as usize
                             - start;
 
-                        let end_pos = para_layout
-                            .paragraph
+                        let end_pos = skia_paragraph
                             .get_glyph_position_at_coordinate((rect.right - 0.1, cy))
                             .position as usize
                             - start;
@@ -1605,7 +1861,7 @@ pub fn calculate_text_layout_data(
 
     TextLayoutData {
         position_data,
-        paragraphs: paragraph_layouts,
+        placements: paragraph_layouts,
     }
 }
 
@@ -1617,13 +1873,10 @@ pub fn calculate_position_data(
     let mut text_content = text_content.clone();
     text_content.update_layout(shape.selrect);
 
-    let mut paragraph_builders = text_content.paragraph_builder_group_from_text(None);
-    let layout_info = calculate_text_layout_data(
-        shape,
-        &text_content,
-        &mut paragraph_builders,
-        skip_position_data,
-    );
+    let fill = text_content.cached_fill_paragraphs(shape);
+    let mut built = fill.borrow_mut();
+    let layout_info =
+        calculate_text_layout_data(shape, &text_content, &mut built, skip_position_data);
 
     layout_info.position_data
 }

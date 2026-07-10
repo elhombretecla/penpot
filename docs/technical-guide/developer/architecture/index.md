@@ -63,4 +63,5 @@ See more at
  * [Backend app](/technical-guide/developer/architecture/backend/)
  * [Exporter app](/technical-guide/developer/architecture/exporter/)
  * [Common code](/technical-guide/developer/architecture/common/)
+ * [Render engine (WASM)](/technical-guide/developer/architecture/render-wasm/)
 

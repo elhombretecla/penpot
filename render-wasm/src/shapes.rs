@@ -135,8 +135,15 @@ impl Type {
                     layout.scale_content(value);
                 }
             }
-            Type::Text(TextContent { paragraphs, .. }) => {
-                paragraphs.iter_mut().for_each(|p| p.scale_content(value));
+            Type::Text(content) => {
+                // The scale value changes every frame while the version-based
+                // cache key does not, so the scaled clone must not share the
+                // paragraph cache with the original shape.
+                content.detach_variant_cache();
+                content
+                    .paragraphs_mut()
+                    .iter_mut()
+                    .for_each(|p| p.scale_content(value));
             }
             _ => {}
         }
@@ -1167,44 +1174,41 @@ impl Shape {
         }
     }
 
-    pub fn children_ids_iter(&self, include_hidden: bool) -> Box<dyn Iterator<Item = &Uuid> + '_> {
-        if include_hidden {
-            return Box::new(self.children.iter().rev());
-        }
-
-        if let Type::Bool(_) = self.shape_type {
-            Box::new([].iter())
-        } else if let Type::Group(group) = self.shape_type {
-            if group.masked {
-                Box::new(self.children.iter().rev().take(self.children.len() - 1))
-            } else {
-                Box::new(self.children.iter().rev())
-            }
+    /// Children ids in paint order (reversed). Concrete iterator type — this
+    /// runs inside the render walker for every visited node, so it must not
+    /// heap-allocate a boxed iterator per call.
+    pub fn children_ids_iter(
+        &self,
+        include_hidden: bool,
+    ) -> std::iter::Take<std::iter::Rev<std::slice::Iter<'_, Uuid>>> {
+        let len = self.children.len();
+        let take = if include_hidden {
+            len
         } else {
-            Box::new(self.children.iter().rev())
-        }
+            match &self.shape_type {
+                Type::Bool(_) => 0,
+                Type::Group(group) if group.masked => len.saturating_sub(1),
+                _ => len,
+            }
+        };
+        self.children.iter().rev().take(take)
     }
 
     /// Returns children in forward (non-reversed) order - useful for layout calculations
     pub fn children_ids_iter_forward(
         &self,
         include_hidden: bool,
-    ) -> Box<dyn Iterator<Item = &Uuid> + '_> {
-        if include_hidden {
-            return Box::new(self.children.iter());
-        }
-
-        if let Type::Bool(_) = self.shape_type {
-            Box::new([].iter())
-        } else if let Type::Group(group) = self.shape_type {
-            if group.masked {
-                Box::new(self.children.iter().skip(1))
-            } else {
-                Box::new(self.children.iter())
-            }
+    ) -> std::iter::Skip<std::slice::Iter<'_, Uuid>> {
+        let skip = if include_hidden {
+            0
         } else {
-            Box::new(self.children.iter())
-        }
+            match &self.shape_type {
+                Type::Bool(_) => self.children.len(),
+                Type::Group(group) if group.masked => 1,
+                _ => 0,
+            }
+        };
+        self.children.iter().skip(skip)
     }
 
     pub fn all_children(

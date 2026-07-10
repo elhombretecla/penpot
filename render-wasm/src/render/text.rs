@@ -3,8 +3,8 @@ use crate::{
     error::Result,
     math::Rect,
     shapes::{
-        calculate_text_layout_data, set_paint_fill, ParagraphBuilderGroup, ParagraphLayout, Stroke,
-        StrokeKind, TextContent,
+        calculate_text_layout_data, set_paint_fill, ParagraphBuilderGroup, ParagraphPlacement,
+        SharedParagraphs, Stroke, StrokeKind, TextContent,
     },
     utils::{get_fallback_fonts, get_font_collection},
 };
@@ -138,7 +138,7 @@ pub fn render_with_bounds_outset(
     render_state: Option<&mut RenderState>,
     canvas: Option<&Canvas>,
     shape: &Shape,
-    paragraph_builders: &mut [Vec<ParagraphBuilder>],
+    paragraphs: &SharedParagraphs,
     surface_id: Option<SurfaceId>,
     shadow: Option<&Paint>,
     blur: Option<&ImageFilter>,
@@ -150,7 +150,7 @@ pub fn render_with_bounds_outset(
         render_state,
         canvas,
         shape,
-        paragraph_builders,
+        paragraphs,
         surface_id,
         shadow,
         blur,
@@ -166,7 +166,7 @@ pub fn render_with_bounds_outset(
 pub fn render_with_bounds_outset_overlay_emoji(
     canvas: &Canvas,
     shape: &Shape,
-    paragraph_builders: &mut [Vec<ParagraphBuilder>],
+    paragraphs: &SharedParagraphs,
     shadow: Option<&Paint>,
     blur: Option<&ImageFilter>,
     stroke_bounds_outset: f32,
@@ -177,7 +177,7 @@ pub fn render_with_bounds_outset_overlay_emoji(
         None,
         Some(canvas),
         shape,
-        paragraph_builders,
+        paragraphs,
         None,
         shadow,
         blur,
@@ -193,7 +193,7 @@ fn render_with_bounds_outset_inner(
     render_state: Option<&mut RenderState>,
     canvas: Option<&Canvas>,
     shape: &Shape,
-    paragraph_builders: &mut [Vec<ParagraphBuilder>],
+    paragraphs: &SharedParagraphs,
     surface_id: Option<SurfaceId>,
     shadow: Option<&Paint>,
     blur: Option<&ImageFilter>,
@@ -225,7 +225,7 @@ fn render_with_bounds_outset_inner(
                         render_text_on_canvas(
                             temp_canvas,
                             shape,
-                            paragraph_builders,
+                            paragraphs,
                             shadow,
                             Some(&blur_filter_clone),
                             fill_inset,
@@ -244,7 +244,7 @@ fn render_with_bounds_outset_inner(
         render_text_on_canvas(
             canvas,
             shape,
-            paragraph_builders,
+            paragraphs,
             shadow,
             blur,
             fill_inset,
@@ -258,7 +258,7 @@ fn render_with_bounds_outset_inner(
         render_text_on_canvas(
             canvas,
             shape,
-            paragraph_builders,
+            paragraphs,
             shadow,
             blur,
             fill_inset,
@@ -274,7 +274,7 @@ pub fn render(
     render_state: Option<&mut RenderState>,
     canvas: Option<&Canvas>,
     shape: &Shape,
-    paragraph_builders: &mut [Vec<ParagraphBuilder>],
+    paragraphs: &SharedParagraphs,
     surface_id: Option<SurfaceId>,
     shadow: Option<&Paint>,
     blur: Option<&ImageFilter>,
@@ -285,7 +285,7 @@ pub fn render(
         render_state,
         canvas,
         shape,
-        paragraph_builders,
+        paragraphs,
         surface_id,
         shadow,
         blur,
@@ -300,7 +300,7 @@ pub fn render(
 pub fn render_overlay_emoji(
     canvas: &Canvas,
     shape: &Shape,
-    paragraph_builders: &mut [Vec<ParagraphBuilder>],
+    paragraphs: &SharedParagraphs,
     shadow: Option<&Paint>,
     blur: Option<&ImageFilter>,
     fill_inset: Option<f32>,
@@ -309,7 +309,7 @@ pub fn render_overlay_emoji(
     render_with_bounds_outset_overlay_emoji(
         canvas,
         shape,
-        paragraph_builders,
+        paragraphs,
         shadow,
         blur,
         0.0,
@@ -322,7 +322,7 @@ pub fn render_overlay_emoji(
 fn render_text_on_canvas(
     canvas: &Canvas,
     shape: &Shape,
-    paragraph_builders: &mut [Vec<ParagraphBuilder>],
+    paragraphs: &SharedParagraphs,
     shadow: Option<&Paint>,
     blur: Option<&ImageFilter>,
     fill_inset: Option<f32>,
@@ -339,13 +339,7 @@ fn render_text_on_canvas(
     if let Some(shadow_paint) = shadow {
         let layer_rec = SaveLayerRec::default().paint(shadow_paint);
         canvas.save_layer(&layer_rec);
-        draw_text(
-            canvas,
-            shape,
-            paragraph_builders,
-            layer_opacity,
-            overlay_emoji,
-        );
+        draw_text(canvas, shape, paragraphs, layer_opacity, overlay_emoji);
         canvas.restore();
     } else if let Some(eps) = fill_inset.filter(|&e| e > 0.0) {
         if let Some(erode) = skia_safe::image_filters::erode((eps, eps), None, None) {
@@ -353,31 +347,13 @@ fn render_text_on_canvas(
             layer_paint.set_image_filter(erode);
             let layer_rec = SaveLayerRec::default().paint(&layer_paint);
             canvas.save_layer(&layer_rec);
-            draw_text(
-                canvas,
-                shape,
-                paragraph_builders,
-                layer_opacity,
-                overlay_emoji,
-            );
+            draw_text(canvas, shape, paragraphs, layer_opacity, overlay_emoji);
             canvas.restore();
         } else {
-            draw_text(
-                canvas,
-                shape,
-                paragraph_builders,
-                layer_opacity,
-                overlay_emoji,
-            );
+            draw_text(canvas, shape, paragraphs, layer_opacity, overlay_emoji);
         }
     } else {
-        draw_text(
-            canvas,
-            shape,
-            paragraph_builders,
-            layer_opacity,
-            overlay_emoji,
-        );
+        draw_text(canvas, shape, paragraphs, layer_opacity, overlay_emoji);
     }
 
     if blur.is_some() {
@@ -387,33 +363,30 @@ fn render_text_on_canvas(
     canvas.restore();
 }
 
-/// Lays out and paints paragraph builders without any layer management.
-fn paint_text(
-    canvas: &Canvas,
-    shape: &Shape,
-    paragraph_builder_groups: &mut [Vec<ParagraphBuilder>],
-) {
-    paint_text_with_emoji_overlay(canvas, shape, paragraph_builder_groups, false);
+/// Paints cached, already-built paragraphs without any layer management.
+fn paint_text(canvas: &Canvas, shape: &Shape, paragraphs: &SharedParagraphs) {
+    paint_text_with_emoji_overlay(canvas, shape, paragraphs, false);
 }
 
 fn paint_text_with_emoji_overlay(
     canvas: &Canvas,
     shape: &Shape,
-    paragraph_builder_groups: &mut [Vec<ParagraphBuilder>],
+    paragraphs: &SharedParagraphs,
     overlay_emoji: bool,
 ) {
     let text_content = shape.get_text_content();
-    let mut layout_info =
-        calculate_text_layout_data(shape, text_content, paragraph_builder_groups, true);
+    let mut built = paragraphs.borrow_mut();
+    let layout_info = calculate_text_layout_data(shape, text_content, &mut built, true);
 
-    for para in &mut layout_info.paragraphs {
-        para.paragraph.paint(canvas, (para.x, para.y));
+    for placement in &layout_info.placements {
+        let para = &mut built[placement.group][placement.item];
+        para.paint(canvas, (placement.x, placement.y));
 
         if overlay_emoji {
-            paint_emoji_overlay(canvas, para);
+            paint_emoji_overlay(canvas, para, placement.x, placement.y);
         }
 
-        for deco in &para.decorations {
+        for deco in &placement.decorations {
             draw_text_decorations(
                 canvas,
                 &deco.text_style,
@@ -467,8 +440,13 @@ fn line_emoji_ranges(
 /// embed COLR/CBDT color glyphs, so each emoji is drawn to a raster surface and
 /// blitted; `paragraph.paint()` already wrote placeholder glyphs (keeps text
 /// selectable).
-fn paint_emoji_overlay(canvas: &Canvas, para: &mut ParagraphLayout) {
-    let line_metrics = para.paragraph.get_line_metrics();
+fn paint_emoji_overlay(
+    canvas: &Canvas,
+    paragraph: &mut skia::textlayout::Paragraph,
+    para_x: f32,
+    para_y: f32,
+) {
+    let line_metrics = paragraph.get_line_metrics();
 
     // Rasterize at TARGET_DPI relative to the emoji's on-page size (72 user
     // units = 1 inch), capped at MAX_RASTER_PX so a huge font can't allocate
@@ -489,10 +467,9 @@ fn paint_emoji_overlay(canvas: &Canvas, para: &mut ParagraphLayout) {
     drop(line_metrics);
 
     for (line_start, line_end) in line_bounds {
-        for (range_start, range_end) in line_emoji_ranges(&mut para.paragraph, line_start, line_end)
-        {
+        for (range_start, range_end) in line_emoji_ranges(paragraph, line_start, line_end) {
             // Get the bounding rects for this (possibly merged) emoji run
-            let rects = para.paragraph.get_rects_for_range(
+            let rects = paragraph.get_rects_for_range(
                 range_start..range_end,
                 skia::textlayout::RectHeightStyle::Tight,
                 skia::textlayout::RectWidthStyle::Tight,
@@ -526,13 +503,13 @@ fn paint_emoji_overlay(canvas: &Canvas, para: &mut ParagraphLayout) {
                 rc.scale((raster_scale, raster_scale));
                 // Translate so the emoji rect origin maps to (0,0)
                 rc.translate((-r.left, -r.top));
-                para.paragraph.paint(rc, (0.0, 0.0));
+                paragraph.paint(rc, (0.0, 0.0));
 
                 let image = raster.image_snapshot();
 
                 // Draw the rasterized emoji onto the PDF canvas at the
                 // correct position (paragraph offset + emoji rect origin).
-                let dest = skia::Rect::from_xywh(para.x + r.left, para.y + r.top, w, h);
+                let dest = skia::Rect::from_xywh(para_x + r.left, para_y + r.top, w, h);
 
                 let sampling = skia::SamplingOptions::from(skia::CubicResampler::mitchell());
                 canvas.draw_image_rect_with_sampling_options(
@@ -580,12 +557,13 @@ fn draw_decoration_stroke(
 
 fn paint_emoji_opaque(
     canvas: &Canvas,
-    emoji_para: &mut ParagraphLayout,
-    deco_para: &ParagraphLayout,
+    emoji_paragraph: &mut skia::textlayout::Paragraph,
+    emoji_x: f32,
+    emoji_y: f32,
+    deco_placement: &ParagraphPlacement,
     stroke_decos: &[(StrokeKind, Paint)],
 ) {
-    let line_bounds: Vec<(usize, usize)> = emoji_para
-        .paragraph
+    let line_bounds: Vec<(usize, usize)> = emoji_paragraph
         .get_line_metrics()
         .iter()
         .map(|l| (l.start_index, l.end_index))
@@ -594,10 +572,8 @@ fn paint_emoji_opaque(
     let mut clip = skia::PathBuilder::new();
     let mut has_emoji = false;
     for (line_start, line_end) in line_bounds {
-        for (range_start, range_end) in
-            line_emoji_ranges(&mut emoji_para.paragraph, line_start, line_end)
-        {
-            let rects = emoji_para.paragraph.get_rects_for_range(
+        for (range_start, range_end) in line_emoji_ranges(emoji_paragraph, line_start, line_end) {
+            let rects = emoji_paragraph.get_rects_for_range(
                 range_start..range_end,
                 skia::textlayout::RectHeightStyle::Tight,
                 skia::textlayout::RectWidthStyle::Tight,
@@ -609,12 +585,7 @@ fn paint_emoji_opaque(
                     continue;
                 }
                 clip.add_rect(
-                    skia::Rect::from_xywh(
-                        emoji_para.x + r.left,
-                        emoji_para.y + r.top,
-                        r.width(),
-                        r.height(),
-                    ),
+                    skia::Rect::from_xywh(emoji_x + r.left, emoji_y + r.top, r.width(), r.height()),
                     None,
                     None,
                 );
@@ -629,11 +600,9 @@ fn paint_emoji_opaque(
 
     canvas.save();
     canvas.clip_path(&clip.detach(), skia::ClipOp::Intersect, true);
-    emoji_para
-        .paragraph
-        .paint(canvas, (emoji_para.x, emoji_para.y));
+    emoji_paragraph.paint(canvas, (emoji_x, emoji_y));
 
-    for deco in &deco_para.decorations {
+    for deco in &deco_placement.decorations {
         draw_text_decorations(
             canvas,
             &deco.text_style,
@@ -653,18 +622,19 @@ fn paint_emoji_opaque(
 pub fn render_emoji_overlay(
     render_state: &mut RenderState,
     shape: &Shape,
-    emoji_builders: &mut [Vec<ParagraphBuilder>],
-    deco_builders: &mut [Vec<ParagraphBuilder>],
+    emoji_paragraphs: &SharedParagraphs,
+    deco_paragraphs: &SharedParagraphs,
     surface_id: SurfaceId,
     blur: Option<&ImageFilter>,
 ) {
     let text_content = shape.get_text_content();
-    let mut emoji_layout = calculate_text_layout_data(shape, text_content, emoji_builders, true);
+    let mut emoji_built = emoji_paragraphs.borrow_mut();
+    let emoji_layout = calculate_text_layout_data(shape, text_content, &mut emoji_built, true);
 
     if !emoji_layout
-        .paragraphs
-        .iter_mut()
-        .any(|para| paragraph_has_emoji(&mut para.paragraph))
+        .placements
+        .iter()
+        .any(|p| paragraph_has_emoji(&mut emoji_built[p.group][p.item]))
     {
         return;
     }
@@ -681,7 +651,8 @@ pub fn render_emoji_overlay(
         }
     }
 
-    let deco_layout = calculate_text_layout_data(shape, text_content, deco_builders, true);
+    let mut deco_built = deco_paragraphs.borrow_mut();
+    let deco_layout = calculate_text_layout_data(shape, text_content, &mut deco_built, true);
     let canvas = render_state.surfaces.canvas_and_mark_dirty(surface_id);
 
     if let Some(blur_filter) = blur {
@@ -690,12 +661,19 @@ pub fn render_emoji_overlay(
         canvas.save_layer(&SaveLayerRec::default().paint(&blur_paint));
     }
 
-    for (emoji_para, deco_para) in emoji_layout
-        .paragraphs
-        .iter_mut()
-        .zip(deco_layout.paragraphs.iter())
+    for (emoji_placement, deco_placement) in emoji_layout
+        .placements
+        .iter()
+        .zip(deco_layout.placements.iter())
     {
-        paint_emoji_opaque(canvas, emoji_para, deco_para, &stroke_decos);
+        paint_emoji_opaque(
+            canvas,
+            &mut emoji_built[emoji_placement.group][emoji_placement.item],
+            emoji_placement.x,
+            emoji_placement.y,
+            deco_placement,
+            &stroke_decos,
+        );
     }
 
     if blur.is_some() {
@@ -706,7 +684,7 @@ pub fn render_emoji_overlay(
 fn draw_text(
     canvas: &Canvas,
     shape: &Shape,
-    paragraph_builder_groups: &mut [Vec<ParagraphBuilder>],
+    paragraphs: &SharedParagraphs,
     layer_opacity: Option<f32>,
     overlay_emoji: bool,
 ) {
@@ -719,7 +697,7 @@ fn draw_text(
         canvas.save_layer(&SaveLayerRec::default());
     }
 
-    paint_text_with_emoji_overlay(canvas, shape, paragraph_builder_groups, overlay_emoji);
+    paint_text_with_emoji_overlay(canvas, shape, paragraphs, overlay_emoji);
 }
 
 /// Renders a text stroke masked to the glyph shape.
@@ -734,9 +712,9 @@ fn draw_text(
 fn render_masked_stroke_on_canvas(
     canvas: &Canvas,
     shape: &Shape,
-    mask_builders: &mut [Vec<ParagraphBuilder>],
-    stroke_builders: &mut [Vec<ParagraphBuilder>],
-    fill_builders: Option<&mut [Vec<ParagraphBuilder>]>,
+    mask_paragraphs: &SharedParagraphs,
+    stroke_paragraphs: &SharedParagraphs,
+    fill_paragraphs: Option<&SharedParagraphs>,
     stroke_mask_blend: skia::BlendMode,
     blur: Option<&ImageFilter>,
     layer_opacity: Option<f32>,
@@ -757,23 +735,23 @@ fn render_masked_stroke_on_canvas(
 
     canvas.save_layer(&SaveLayerRec::default());
 
-    paint_text(canvas, shape, mask_builders);
+    paint_text(canvas, shape, mask_paragraphs);
 
     let mut stroke_paint = Paint::default();
     stroke_paint.set_blend_mode(stroke_mask_blend);
     canvas.save_layer(&SaveLayerRec::default().paint(&stroke_paint));
 
-    paint_text(canvas, shape, stroke_builders);
+    paint_text(canvas, shape, stroke_paragraphs);
 
     // Fill with DstOver behind the stroke, inside the masked layer so the fill's
     // anti-aliased edge aligns with the stroke (no seam at the glyph edge).
     // Outer strokes have no fill here (`None`).
-    if let Some(fill_builders) = fill_builders {
+    if let Some(fill_paragraphs) = fill_paragraphs {
         let mut dst_over_paint = Paint::default();
         dst_over_paint.set_blend_mode(skia::BlendMode::DstOver);
         canvas.save_layer(&SaveLayerRec::default().paint(&dst_over_paint));
 
-        paint_text(canvas, shape, fill_builders);
+        paint_text(canvas, shape, fill_paragraphs);
 
         canvas.restore(); // DstOver layer
     }
@@ -796,9 +774,9 @@ fn render_masked_stroke(
     render_state: Option<&mut RenderState>,
     canvas: Option<&Canvas>,
     shape: &Shape,
-    mask_builders: &mut [Vec<ParagraphBuilder>],
-    stroke_builders: &mut [Vec<ParagraphBuilder>],
-    mut fill_builders: Option<&mut [Vec<ParagraphBuilder>]>,
+    mask_paragraphs: &SharedParagraphs,
+    stroke_paragraphs: &SharedParagraphs,
+    fill_paragraphs: Option<&SharedParagraphs>,
     stroke_mask_blend: skia::BlendMode,
     surface_id: Option<SurfaceId>,
     blur: Option<&ImageFilter>,
@@ -819,7 +797,6 @@ fn render_masked_stroke(
             let bounds = blur_filter.compute_fast_bounds(text_bounds);
             if bounds.is_finite() && bounds.width() > 0.0 && bounds.height() > 0.0 {
                 let blur_filter_clone = blur_filter.clone();
-                let fill_builders = &mut fill_builders;
                 if filters::render_with_filter_surface(
                     render_state,
                     bounds,
@@ -829,9 +806,9 @@ fn render_masked_stroke(
                         render_masked_stroke_on_canvas(
                             temp_canvas,
                             shape,
-                            mask_builders,
-                            stroke_builders,
-                            fill_builders.as_deref_mut(),
+                            mask_paragraphs,
+                            stroke_paragraphs,
+                            fill_paragraphs,
                             stroke_mask_blend,
                             Some(&blur_filter_clone),
                             layer_opacity,
@@ -848,9 +825,9 @@ fn render_masked_stroke(
         render_masked_stroke_on_canvas(
             canvas,
             shape,
-            mask_builders,
-            stroke_builders,
-            fill_builders.as_deref_mut(),
+            mask_paragraphs,
+            stroke_paragraphs,
+            fill_paragraphs,
             stroke_mask_blend,
             blur,
             layer_opacity,
@@ -862,9 +839,9 @@ fn render_masked_stroke(
         render_masked_stroke_on_canvas(
             canvas,
             shape,
-            mask_builders,
-            stroke_builders,
-            fill_builders,
+            mask_paragraphs,
+            stroke_paragraphs,
+            fill_paragraphs,
             stroke_mask_blend,
             blur,
             layer_opacity,
@@ -878,21 +855,21 @@ pub fn render_inner_stroke(
     render_state: Option<&mut RenderState>,
     canvas: Option<&Canvas>,
     shape: &Shape,
-    stroke_builders: &mut [Vec<ParagraphBuilder>],
-    fill_builders: &mut [Vec<ParagraphBuilder>],
+    stroke_paragraphs: &SharedParagraphs,
+    fill_paragraphs: &SharedParagraphs,
     surface_id: Option<SurfaceId>,
     blur: Option<&ImageFilter>,
     stroke_bounds_outset: f32,
     layer_opacity: Option<f32>,
 ) -> Result<()> {
-    let mut mask_builders = shape.get_text_content().paragraph_builder_group_opaque();
+    let mask_paragraphs = shape.get_text_content().cached_opaque_paragraphs(shape);
     render_masked_stroke(
         render_state,
         canvas,
         shape,
-        &mut mask_builders,
-        stroke_builders,
-        Some(fill_builders),
+        &mask_paragraphs,
+        stroke_paragraphs,
+        Some(fill_paragraphs),
         skia::BlendMode::SrcIn,
         surface_id,
         blur,
@@ -906,19 +883,19 @@ pub fn render_outer_stroke(
     render_state: Option<&mut RenderState>,
     canvas: Option<&Canvas>,
     shape: &Shape,
-    stroke_builders: &mut [Vec<ParagraphBuilder>],
+    stroke_paragraphs: &SharedParagraphs,
     surface_id: Option<SurfaceId>,
     blur: Option<&ImageFilter>,
     stroke_bounds_outset: f32,
     layer_opacity: Option<f32>,
 ) -> Result<()> {
-    let mut mask_builders = shape.get_text_content().paragraph_builder_group_opaque();
+    let mask_paragraphs = shape.get_text_content().cached_opaque_paragraphs(shape);
     render_masked_stroke(
         render_state,
         canvas,
         shape,
-        &mut mask_builders,
-        stroke_builders,
+        &mask_paragraphs,
+        stroke_paragraphs,
         None,
         skia::BlendMode::SrcOut,
         surface_id,

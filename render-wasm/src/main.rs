@@ -108,6 +108,13 @@ pub extern "C" fn set_canvas_background(raw_color: u32) -> Result<()> {
 pub extern "C" fn render(timestamp: i32, flags: u8) -> Result<FrameType> {
     with_state!(state, {
         let render_state = get_render_state();
+        render_state.begin_frame_memos();
+        // Reclaim pool slots from deleted shapes when enough garbage piled
+        // up. Runs only on quiescent frames (no gesture / drag in course).
+        if !render_state.options.is_interactive_transform() && !render_state.options.is_fast_mode()
+        {
+            state.shapes.maybe_compact();
+        }
         state.rebuild_touched_tiles();
         // Drain the throttled modifier-tile invalidation accumulated
         // since the previous rAF. set_modifiers skips this work during
@@ -533,21 +540,24 @@ pub extern "C" fn add_shape_child(a: u32, b: u32, c: u32, d: u32) -> Result<()> 
     Ok(())
 }
 
-fn set_children_set(entries: Vec<Uuid>) -> Result<()> {
+fn set_children_set(mut entries: Vec<Uuid>) -> Result<()> {
     let mut deleted = Vec::new();
     let mut parent_id = None;
+
+    // Touch/undelete the incoming children first (order is irrelevant for
+    // these operations), so `entries` can then be moved into the shape
+    // instead of cloned.
+    with_state!(state, {
+        for id in entries.iter().copied() {
+            state.touch_shape(id);
+            state.shapes.mark_undeleted(&id);
+        }
+    });
 
     with_current_shape_mut!(state, |shape: &mut Shape| {
         parent_id = Some(shape.id);
         (_, deleted) = shape.compute_children_differences(&entries);
-        shape.children = entries.clone();
-
-        for id in entries {
-            state.touch_shape(id);
-            if let Some(children_shape) = state.shapes.get_mut(&id) {
-                children_shape.set_deleted(false);
-            }
-        }
+        shape.children = std::mem::take(&mut entries);
     });
 
     with_state!(state, {

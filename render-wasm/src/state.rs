@@ -49,18 +49,18 @@ impl State {
                     .to_string(),
             ));
         }
-        self.saved_shapes = Some(self.shapes.clone());
-        self.shapes = ShapesPool::new();
+        // Move the pool aside instead of deep-cloning it: cloning copies
+        // every Shape (fills, paths, paragraphs...) and is O(document size).
+        self.saved_shapes = Some(std::mem::replace(&mut self.shapes, ShapesPool::new()));
         Ok(())
     }
 
     // Disposes of the temporary shapes pool restoring the normal pool
     // Will panic if a there is no temporary pool.
     pub fn end_temp_objects(&mut self) -> Result<()> {
-        self.shapes = self.saved_shapes.clone().ok_or(Error::CriticalError(
+        self.shapes = self.saved_shapes.take().ok_or(Error::CriticalError(
             "Tried to end temp objects but not content to be restored is present".to_string(),
         ))?;
-        self.saved_shapes = None;
         Ok(())
     }
 
@@ -181,9 +181,7 @@ impl State {
             if let Some(shape_to_delete) = self.shapes.get(&id) {
                 let to_delete = shape_to_delete.all_children(&self.shapes, true, true);
                 for shape_id in to_delete {
-                    if let Some(shape_to_delete) = self.shapes.get_mut(&shape_id) {
-                        shape_to_delete.set_deleted(true);
-                    }
+                    self.shapes.mark_deleted(&shape_id);
                     if render_state.show_grid == Some(shape_id) {
                         render_state.show_grid = None;
                     }

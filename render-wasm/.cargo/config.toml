@@ -1,0 +1,10 @@
+# WASM SIMD for the Rust side of the renderer (geometry, bounds, matrix math,
+# serialization). All browsers with WebGL2 support (the renderer's baseline)
+# also ship fixed-width SIMD (Chrome 91+, Firefox 89+, Safari 16.4+).
+#
+# NOTE: the prebuilt Skia binaries are compiled without SIMD; linking mixed
+# feature sets is valid (wasm features are per-function). Rebuilding
+# penpot/skia-binaries with `-msimd128` is the natural follow-up — that is
+# where most of the vectorizable time (blits, blurs, rasterization) lives.
+[target.wasm32-unknown-emscripten]
+rustflags = ["-C", "target-feature=+simd128"]

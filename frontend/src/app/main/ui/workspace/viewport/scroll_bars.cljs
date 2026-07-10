@@ -156,6 +156,8 @@
 
         on-pointer-down
         (fn [event axis]
+          (dom/capture-pointer event)
+          (st/emit! (dw/start-scrollbar-panning))
           (let [start-pt              (dom/get-client-position event)
                 viewport-point        (point->viewport start-pt)
                 new-h-scrollbar-x     (:x viewport-point)
@@ -190,9 +192,11 @@
             (reset! h-scrolling? (= axis :x))))
 
         on-pointer-up
-        (fn []
+        (fn [event]
+          (dom/release-pointer event)
           (reset! v-scrolling? false)
-          (reset! h-scrolling? false))]
+          (reset! h-scrolling? false)
+          (st/emit! (dw/finish-scrollbar-panning)))]
 
     [:*
      (when show-v-scroll?

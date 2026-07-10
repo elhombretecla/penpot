@@ -427,9 +427,12 @@
   (when (and wasm/context-initialized? (not @wasm/context-lost?))
     (internal-render timestamp)
 
-    ;; Update text editor blink (so cursor toggles) using the same timestamp
+    ;; Update text editor blink (so cursor toggles) using the same timestamp.
+    ;; Gated first on the cheap session flag: outside an editing session this
+    ;; avoids three FFI calls + a state scan on every rendered frame.
     (try
-      (when (is-text-editor-wasm-enabled @st/state)
+      (when (and @wasm/text-editor-active?
+                 (is-text-editor-wasm-enabled @st/state))
         (text-editor/text-editor-update-blink timestamp)
         (text-editor/text-editor-render-overlay)
         ;; Poll for editor events; if any event occurs, trigger a re-render
@@ -806,6 +809,22 @@
   [leaf]
   (filter :fill-image (:fills leaf)))
 
+(defn- pending-image-fetches
+  "Pending fetch callbacks for the image ids not yet cached in WASM at the
+   given resolution."
+  [shape-id image-ids thumbnail?]
+  (keep (fn [id]
+          (let [buffer        (uuid/get-u32 id)
+                cached-image? (h/call wasm/internal-module "_is_image_cached"
+                                      (aget buffer 0)
+                                      (aget buffer 1)
+                                      (aget buffer 2)
+                                      (aget buffer 3)
+                                      thumbnail?)]
+            (when (zero? cached-image?)
+              (fetch-image shape-id id thumbnail?))))
+        image-ids))
+
 (defn- process-fill-image
   [shape-id fill thumbnail?]
   (when-let [image (:fill-image fill)]
@@ -831,6 +850,20 @@
           (mapcat get-fill-images)
           (map #(process-fill-image shape-id % thumbnail?))))))
 
+(defn set-shape-text-images-once
+  "Pending image fetches for the text fill images, both resolutions in one
+   content walk: {:thumbnails [...] :full [...]}."
+  [shape-id content]
+  (let [paragraph-set (first (get content :children))
+        paragraphs    (get paragraph-set :children)
+        image-ids     (into []
+                            (comp (mapcat :children)
+                                  (mapcat get-fill-images)
+                                  (keep #(get-in % [:fill-image :id])))
+                            paragraphs)]
+    {:thumbnails (into [] (pending-image-fetches shape-id image-ids true))
+     :full       (into [] (pending-image-fetches shape-id image-ids false))}))
+
 (defn set-shape-fills
   [shape-id fills thumbnail?]
   (if (empty? fills)
@@ -847,18 +880,25 @@
       (h/call wasm/internal-module "_set_shape_fills")
 
       ;; load images for image fills if not cached
-      (keep (fn [id]
-              (let [buffer        (uuid/get-u32 id)
-                    cached-image? (h/call wasm/internal-module "_is_image_cached"
-                                          (aget buffer 0)
-                                          (aget buffer 1)
-                                          (aget buffer 2)
-                                          (aget buffer 3)
-                                          thumbnail?)]
-                (when (zero? cached-image?)
-                  (fetch-image shape-id id thumbnail?))))
+      (pending-image-fetches shape-id image-ids thumbnail?))))
 
-            image-ids))))
+(defn set-shape-fills-once
+  "Like `set-shape-fills` but serializes and uploads the payload a single
+   time, returning the pending image fetches for BOTH resolutions:
+   {:thumbnails (...) :full (...)}. Used by the load path, which previously
+   serialized and uploaded the same fills twice (one pass per resolution)."
+  [shape-id fills]
+  (if (empty? fills)
+    (do (h/call wasm/internal-module "_clear_shape_fills")
+        {:thumbnails nil :full nil})
+    (let [fills  (types.fills/coerce fills)
+          image-ids (types.fills/get-image-ids fills)
+          offset (mem/alloc->offset-32 (types.fills/get-byte-size fills))
+          heap   (mem/get-heap-u32)]
+      (types.fills/write-to fills heap offset)
+      (h/call wasm/internal-module "_set_shape_fills")
+      {:thumbnails (into [] (pending-image-fetches shape-id image-ids true))
+       :full       (into [] (pending-image-fetches shape-id image-ids false))})))
 
 (defn set-shape-strokes
   [shape-id strokes thumbnail?]
@@ -913,6 +953,57 @@
                   nil)))))
 
         strokes))
+
+(defn set-shape-strokes-once
+  "Like `set-shape-strokes` but serializes and uploads each stroke a single
+   time, returning the pending image fetches for BOTH resolutions:
+   {:thumbnails [...] :full [...]}. Used by the load path, which previously
+   cleared and re-uploaded every stroke twice (one pass per resolution)."
+  [shape-id strokes]
+  (h/call wasm/internal-module "_clear_shape_strokes")
+  (let [thumbnails (volatile! [])
+        full       (volatile! [])]
+    (run! (fn [stroke]
+            (when-not (:hidden stroke)
+              (let [opacity   (or (:stroke-opacity stroke) 1.0)
+                    color     (:stroke-color stroke)
+                    gradient  (:stroke-color-gradient stroke)
+                    image     (:stroke-image stroke)
+                    width     (:stroke-width stroke)
+                    align     (:stroke-alignment stroke)
+                    style     (-> stroke :stroke-style sr/translate-stroke-style)
+                    cap-start (-> stroke :stroke-cap-start sr/translate-stroke-cap)
+                    cap-end   (-> stroke :stroke-cap-end sr/translate-stroke-cap)
+                    dash      (or (:stroke-dash stroke) -1)
+                    gap       (or (:stroke-gap stroke) -1)
+                    offset    (mem/alloc types.fills.impl/FILL-U8-SIZE)
+                    heap      (mem/get-heap-u8)
+                    dview     (js/DataView. (.-buffer heap))]
+                (case align
+                  :inner (h/call wasm/internal-module "_add_shape_inner_stroke" width style cap-start cap-end dash gap)
+                  :outer (h/call wasm/internal-module "_add_shape_outer_stroke" width style cap-start cap-end dash gap)
+                  (h/call wasm/internal-module "_add_shape_center_stroke" width style cap-start cap-end dash gap))
+
+                (cond
+                  (some? gradient)
+                  (do
+                    (types.fills.impl/write-gradient-fill offset dview opacity gradient)
+                    (h/call wasm/internal-module "_add_shape_stroke_fill"))
+
+                  (some? image)
+                  (let [image-id (get image :id)]
+                    (types.fills.impl/write-image-fill offset dview opacity image)
+                    (h/call wasm/internal-module "_add_shape_stroke_fill")
+                    (vswap! thumbnails into (pending-image-fetches shape-id [image-id] true))
+                    (vswap! full into (pending-image-fetches shape-id [image-id] false)))
+
+                  (some? color)
+                  (do
+                    (types.fills.impl/write-solid-fill offset dview opacity color)
+                    (h/call wasm/internal-module "_add_shape_stroke_fill"))))))
+          strokes)
+    {:thumbnails @thumbnails
+     :full @full}))
 
 (defn set-shape-svg-attrs
   [attrs]
@@ -1342,10 +1433,10 @@
     (reset! view-interaction-active? false)))
 
 (defn- view-gesture-active?
-  "True while a pointer-driven pan or zoom gesture is in progress."
+  "True while a pointer-driven pan, zoom or scrollbar gesture is in progress."
   []
   (let [local (get @st/state :workspace-local)]
-    (or (:panning local) (:zooming local))))
+    (or (:panning local) (:zooming local) (:scrolling local))))
 
 (defn finalize-view-interaction!
   "Ends the view interaction and triggers a full-quality render."
@@ -1441,17 +1532,22 @@
 
       (set-shape-layout shape)
       (set-layout-data shape)
+      ;; Fills, strokes and text images are serialized and uploaded ONCE;
+      ;; only the pending image fetches are split by resolution.
       (let [is-text? (= type :text)
             text-content-pending (when is-text? (set-shape-text-content id content))
+            text-images (when is-text? (set-shape-text-images-once id content))
+            fill-images (set-shape-fills-once id fills)
+            stroke-images (set-shape-strokes-once id strokes)
             pending-thumbnails (into [] (concat
                                          text-content-pending
-                                         (when is-text? (set-shape-text-images id content true))
-                                         (set-shape-fills id fills true)
-                                         (set-shape-strokes id strokes true)))
+                                         (:thumbnails text-images)
+                                         (:thumbnails fill-images)
+                                         (:thumbnails stroke-images)))
             pending-full (into [] (concat
-                                   (when is-text? (set-shape-text-images id content false))
-                                   (set-shape-fills id fills false)
-                                   (set-shape-strokes id strokes false)))]
+                                   (:full text-images)
+                                   (:full fill-images)
+                                   (:full stroke-images)))]
         (perf/end-measure "set-object")
         {:thumbnails pending-thumbnails
          :full pending-full
@@ -2041,6 +2137,11 @@
        :depth true
        :stencil true
        :alpha true
+       ;; Ask for the discrete GPU on dual-GPU systems; falls back silently.
+       ;; NOTE: `desynchronized: true` was evaluated and rejected — snapshot
+       ;; capture (page transitions, context-loss overlay) relies on
+       ;; `preserveDrawingBuffer` semantics that desynchronized breaks.
+       "powerPreference" "high-performance"
        "preserveDrawingBuffer" true})
 
 (defn resize-viewbox
@@ -2679,5 +2780,32 @@
    viewport mount. Idempotent: the `delay` caches its in-flight promise."
   []
   @module)
+
+;; Re-fetch full-resolution images evicted by the WASM image cache (LRU,
+;; byte-budgeted). The event carries the evicted image ids as [a b c d] u32
+;; quads. After the re-fetched image is stored, WASM touches every shape
+;; using it, so the follow-up render repaints the affected tiles.
+(defonce ^:private images-evicted-handler
+  (letfn [(handler [^js event]
+            (when (initialized?)
+              (let [ids (.. event -detail -ids)
+                    callbacks
+                    (into []
+                          (keep (fn [quad]
+                                  (let [id (uuid/from-unsigned-parts
+                                            (aget quad 0)
+                                            (aget quad 1)
+                                            (aget quad 2)
+                                            (aget quad 3))]
+                                    (:callback (fetch-image id id false)))))
+                          ids)]
+                (when (seq callbacks)
+                  (->> (rx/from callbacks)
+                       (rx/mapcat (fn [callback] (callback)))
+                       (rx/reduce conj [])
+                       (rx/subs!
+                        (fn [_] (request-render "images-evicted-refetch"))))))))]
+    (.addEventListener ug/document "penpot:wasm:images-evicted" handler)
+    handler))
 
 

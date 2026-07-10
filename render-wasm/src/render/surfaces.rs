@@ -174,6 +174,55 @@ impl DocAtlas {
         new_right += pad;
         new_bottom += pad;
 
+        // Geometric growth: when an existing atlas must grow, extend the
+        // growing side(s) so the new extent is at least 1.5× the old one.
+        // Panning across a large document then causes O(log n) reallocations
+        // + full re-blits instead of one per new tile row/column.
+        if !needs_init {
+            let old_w = current_right - current_left;
+            let old_h = current_bottom - current_top;
+            let min_w = (old_w * 1.5).max(new_right - new_left);
+            let min_h = (old_h * 1.5).max(new_bottom - new_top);
+            if new_left < current_left {
+                new_left = new_left.min(new_right - min_w);
+            }
+            if new_right > current_right {
+                new_right = new_right.max(new_left + min_w);
+            }
+            if new_top < current_top {
+                new_top = new_top.min(new_bottom - min_h);
+            }
+            if new_bottom > current_bottom {
+                new_bottom = new_bottom.max(new_top + min_h);
+            }
+
+            // Don't let speculative growth extend beyond the document bounds
+            // (plus padding): area outside the document is always empty but
+            // would still count against the texture-size cap and force an
+            // earlier atlas downscale (quality loss, issue #10334 class).
+            if let Some(bounds) = self.doc_bounds {
+                new_left = new_left.max(bounds.left - pad).min(doc_rect.left.floor());
+                new_top = new_top.max(bounds.top - pad).min(doc_rect.top.floor());
+                new_right = new_right.min(bounds.right + pad).max(doc_rect.right.ceil());
+                new_bottom = new_bottom
+                    .min(bounds.bottom + pad)
+                    .max(doc_rect.bottom.ceil());
+                // Never shrink below the current atlas extent: existing
+                // content must survive the copy below.
+                new_left = new_left.min(current_left);
+                new_top = new_top.min(current_top);
+                new_right = new_right.max(current_right);
+                new_bottom = new_bottom.max(current_bottom);
+            }
+        }
+
+        // Quantize outward to tile boundaries so consecutive small pans land
+        // on the same atlas extents.
+        new_left = (new_left / tiles::TILE_SIZE).floor() * tiles::TILE_SIZE;
+        new_top = (new_top / tiles::TILE_SIZE).floor() * tiles::TILE_SIZE;
+        new_right = (new_right / tiles::TILE_SIZE).ceil() * tiles::TILE_SIZE;
+        new_bottom = (new_bottom / tiles::TILE_SIZE).ceil() * tiles::TILE_SIZE;
+
         let doc_w = (new_right - new_left).max(1.0);
         let doc_h = (new_bottom - new_top).max(1.0);
 
@@ -693,6 +742,14 @@ impl Surfaces {
     pub fn snapshot_rect(&mut self, id: SurfaceId, irect: skia::IRect) -> Option<skia::Image> {
         let surface = self.get_mut(id);
         surface.image_snapshot_with_bounds(irect)
+    }
+
+    /// Full-surface snapshot. Cheap (copy-on-write reference to the backing
+    /// texture): callers that need many rect crops of the same surface should
+    /// take this once and draw with per-crop source rects instead of paying
+    /// one texture copy per `snapshot_rect`.
+    pub fn snapshot_full(&mut self, id: SurfaceId) -> skia::Image {
+        self.get_mut(id).image_snapshot()
     }
 
     /// Returns a mutable reference to the canvas and automatically marks
@@ -1750,8 +1807,24 @@ impl TileTextureCache {
             self.gc_non_visible(tile_viewbox);
         }
 
-        let Some(tile_ref) = self.provider.allocate() else {
-            panic!("Tile texture allocation failed {}:{}", tile.0, tile.1);
+        let tile_ref = match self.provider.allocate() {
+            Some(tile_ref) => tile_ref,
+            None => {
+                // Last resort: the GC passes above may not free a slot when
+                // every cached tile is inside the visible rect (tiny atlas /
+                // huge viewport). Force-evict an arbitrary entry other than
+                // the one being inserted rather than killing the renderer.
+                let victim = self.grid.keys().find(|t| *t != tile).copied();
+                if let Some(victim) = victim {
+                    if let Some(victim_ref) = self.grid.remove(&victim) {
+                        self.textures[victim_ref.index].set_empty();
+                        self.provider.deallocate(victim_ref);
+                    }
+                }
+                self.provider.allocate().unwrap_or_else(|| {
+                    panic!("Tile texture allocation failed {}:{}", tile.0, tile.1)
+                })
+            }
         };
 
         self.grid.insert(*tile, tile_ref.clone());
