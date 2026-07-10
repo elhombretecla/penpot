@@ -9,6 +9,7 @@
   for recently imported shapes."
   (:require
    [app.common.data :as d]
+   [app.common.files.shape-compact :as fsc]
    [app.common.types.shape :as cts]
    [app.common.uuid :as uuid]))
 
@@ -110,6 +111,9 @@
   process but before validation."
   [shape]
   (-> shape
+      ;; Restore attributes omitted by the compact binfile-v3 format
+      ;; (noop for complete shapes)
+      (fsc/expand-shape)
       (fix-shape-shadow-color)
       (fix-root-shape)
       (fix-legacy-flex-dir)))

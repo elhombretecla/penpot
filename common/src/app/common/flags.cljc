@@ -70,6 +70,14 @@
     :backend-openapi-doc
     ;; Disable it to start the RPC without the worker.
     :backend-worker
+    ;; EXPERIMENTAL: export binfile-v3 in compact layout: one JSON
+    ;; entry per page (objects embedded) with derivable shape
+    ;; attributes pruned. The importer reads both layouts.
+    :binfile-v3-compact-export
+    ;; EXPERIMENTAL: round non-integer numbers to 4 decimals on compact
+    ;; binfile-v3 exports (removes float32 conversion artifacts). Only
+    ;; takes effect when `binfile-v3-compact-export` is enabled.
+    :binfile-v3-round-floats
     ;; Only for development
     :component-thumbnails
     ;; Enables CORS support for the RPC API. Requires an explicit
