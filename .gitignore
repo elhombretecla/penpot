@@ -98,6 +98,7 @@ opencode.json
 /.claude
 /.playwright-mcp
 /.devenv/mcp/
+/sample-files
 /opencode.json
 /.codex/
 /tools/__pycache__
