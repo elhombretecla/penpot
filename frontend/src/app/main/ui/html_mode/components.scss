@@ -356,7 +356,40 @@
 }
 
 // ---------------------------------------------------------------------------
-// Variant chip row
+// Variant property selects — one label + DS select* per property axis.
+// Replaces the per-combination chip row for variant sets (the chips
+// remain below as the fallback for sets without structured properties).
+
+.variant-selects {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-s) var(--sp-m);
+  padding-block: var(--sp-s);
+  padding-inline: var(--sp-l);
+  border-block-end: $b-1 solid var(--color-background-quaternary);
+}
+
+// DS select* expands to fill its parent, so the field fixes the
+// footprint: wide enough for values like "icon + text", capped so five
+// axes still fit on one row at typical widths.
+.variant-select-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xxs);
+  flex: 0 1 auto;
+  min-inline-size: px2rem(140);
+  max-inline-size: px2rem(240);
+}
+
+.variant-select-label {
+  @include eyebrow;
+
+  color: var(--color-foreground-secondary);
+}
+
+// ---------------------------------------------------------------------------
+// Variant chip row (fallback for sets without structured properties)
 
 .variant-chip-row {
   display: flex;

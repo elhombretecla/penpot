@@ -29,6 +29,7 @@
    [app.main.ui.components.copy-button :refer [copy-button*]]
    [app.main.ui.components.search-bar :refer [search-bar*]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
+   [app.main.ui.ds.controls.select :refer [select*]]
    [app.main.ui.ds.foundations.assets.icon :refer [icon*] :as i]
    [app.main.ui.html-mode.design-tokens :as dt]
    [app.main.ui.html-mode.preview-doc :as pdoc]
@@ -344,6 +345,97 @@
                :on-click #(on-select (:id v))}
       label])])
 
+;; --- Variant property selects ----------------------------------------------
+;;
+;; Variant sets share the same property axes (type, size, state, …), so
+;; instead of one chip per combination (which explodes combinatorially —
+;; a Button with 5 axes renders 192 chips) we render one label + DS
+;; `select*` per PROPERTY. Picking a value resolves the closest existing
+;; variant, so sparse matrices (combinations that don't exist) degrade
+;; gracefully instead of dead-ending.
+
+(defn- variant-prop-value
+  "Value of property `pname` on `variant`, or \"\" when absent."
+  [variant pname]
+  (or (some #(when (= (:name %) pname) (:value %))
+            (:variant-properties variant))
+      ""))
+
+(defn- variant-prop-names
+  "Canonical ordered property axes across the whole variant set. Uses
+   first-seen order so the selects match the order used in chip labels
+   and in the workspace's variant panel."
+  [variants]
+  (into []
+        (comp (mapcat :variant-properties)
+              (map :name)
+              (remove str/blank?)
+              (distinct))
+        variants))
+
+(defn- variant-values
+  "Vector of `variant`'s values aligned with `prop-names`."
+  [variants-prop-names variant]
+  (mapv #(variant-prop-value variant %) variants-prop-names))
+
+(defn- closest-variant
+  "The variant whose values best match `desired` (a values vector
+   aligned with `prop-names`) among those where `pname` = `value`.
+   Uses ctv/distance, which weights leading properties heavier, so the
+   fallback changes trailing axes before leading ones."
+  [variants prop-names desired pname value]
+  (when-let [candidates (seq (filter #(= value (variant-prop-value % pname)) variants))]
+    (apply min-key
+           #(ctv/distance desired (variant-values prop-names %))
+           candidates)))
+
+(mf/defc variant-selects*
+  {::mf/private true}
+  [{:keys [variants active-variant on-select]}]
+  (let [prop-names
+        (mf/with-memo [variants]
+          (variant-prop-names variants))
+
+        on-prop-change
+        (mf/use-fn
+         (mf/deps variants prop-names active-variant on-select)
+         (fn [pname value]
+           (let [idx     (count (take-while #(not= % pname) prop-names))
+                 desired (-> (variant-values prop-names active-variant)
+                             (assoc idx value))
+                 target  (closest-variant variants prop-names desired pname value)]
+             (when (and target (not= (:id target) (:id active-variant)))
+               (on-select (:id target))))))]
+
+    ;; Defensive fallback: a set without structured properties keeps the
+    ;; old chip row (one chip per variant name).
+    (if (empty? prop-names)
+      [:> variant-chip-row* {:variants variants
+                             :selected-id (:id active-variant)
+                             :on-select on-select}]
+      [:div {:class (stl/css :variant-selects)
+             :aria-label (tr "viewer.html-mode.components.variants")}
+       (for [pname prop-names
+             :let [current (variant-prop-value active-variant pname)
+                   options (into []
+                                 (comp (map #(variant-prop-value % pname))
+                                       (distinct)
+                                       (map (fn [v]
+                                              {:id v
+                                               :label (if (str/blank? v) "–" v)})))
+                                 variants)]]
+         ;; The key includes the current value: `select*` is uncontrolled
+         ;; (reads `default-selected` only on mount), so remounting is how
+         ;; a select whose axis was changed INDIRECTLY (sparse-matrix
+         ;; fallback picked another value for it) re-syncs its display.
+         ^{:key (str pname "=" current)}
+         [:div {:class (stl/css :variant-select-field)}
+          [:span {:class (stl/css :variant-select-label)} pname]
+          [:> select* {:options options
+                       :default-selected current
+                       :aria-label pname
+                       :on-change (fn [value] (on-prop-change pname value))}]])])))
+
 (mf/defc variant-properties-block*
   {::mf/private true}
   [{:keys [properties]}]
@@ -627,9 +719,9 @@
                                   :aria-label (tr "viewer.html-mode.components.toggle-layout")}]]]
 
               (when-not single-variant?
-                [:> variant-chip-row* {:variants variants
-                                       :selected-id (:id active-variant)
-                                       :on-select on-select-variant}])
+                [:> variant-selects* {:variants variants
+                                      :active-variant active-variant
+                                      :on-select on-select-variant}])
 
               [:div {:class (stl/css-case
                              :detail-body true
