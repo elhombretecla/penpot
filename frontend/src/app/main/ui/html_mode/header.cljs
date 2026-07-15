@@ -28,8 +28,9 @@
    [app.main.router :as rt]
    [app.main.store :as st]
    [app.main.ui.components.dropdown :refer [dropdown]]
+   [app.main.ui.ds.buttons.button :refer [button*]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
-   [app.main.ui.ds.foundations.assets.icon :as i]
+   [app.main.ui.ds.foundations.assets.icon :refer [icon*] :as i]
    [app.main.ui.html-mode.components :refer [bg-swatches*]]
    [app.main.ui.html-mode.device-view :refer [device-view-controls*]]
    [app.main.ui.html-mode.refs :as hrefs]
@@ -77,7 +78,8 @@
            :on-key-down on-key}
      [:span {:class (stl/css :breadcrumb-text)}
       (dm/str (:name file) " / " (:name page))]
-     [:span {:class (stl/css :icon)} deprecated-icon/arrow]
+     [:span {:class (stl/css :icon)}
+      [:> icon* {:icon-id i/arrow-down :size "s"}]]
      [:& dropdown {:show show? :on-close close!}
       [:ul {:class (stl/css :dropdown)}
        (for [id page-ids]
@@ -89,7 +91,8 @@
           [:span {:class (stl/css :dropdown-item-name)}
            (get-in file [:data :pages-index id :name])]
           (when (= id page-id)
-            [:span {:class (stl/css :icon-check)} deprecated-icon/tick])])]]]))
+            [:span {:class (stl/css :icon-check)}
+             [:> icon* {:icon-id i/tick :size "s"}]])])]]]))
 
 (mf/defc board-picker*
   {::mf/private true}
@@ -120,7 +123,8 @@
              :on-key-down on-key}
        [:span {:class (stl/css :board-picker-name)}
         (or (:name frame) "—")]
-       [:span {:class (stl/css :icon)} deprecated-icon/arrow]
+       [:span {:class (stl/css :icon)}
+        [:> icon* {:icon-id i/arrow-down :size "s"}]]
        [:& dropdown {:show show? :on-close close!}
         [:ul {:class (stl/css :dropdown)}
          (for [f frames]
@@ -131,7 +135,8 @@
                  :on-click on-select}
             [:span {:class (stl/css :dropdown-item-name)} (:name f)]
             (when (= (:id f) (:id frame))
-              [:span {:class (stl/css :icon-check)} deprecated-icon/tick])])]]])))
+              [:span {:class (stl/css :icon-check)}
+               [:> icon* {:icon-id i/tick :size "s"}]])])]]])))
 
 ;; ---------------------------------------------------------------------------
 ;; Center zone: section mode buttons
@@ -177,19 +182,21 @@
         on-reset    (mf/use-fn #(st/emit! dhtml/reset-zoom))]
     [:div {:class (stl/css :zoom-widget)
            :title (tr "workspace.header.zoom")}
-     [:button {:class (stl/css :zoom-btn)
-               :aria-label (tr "shortcuts.decrease-zoom")
-               :on-click on-decrease}
-      deprecated-icon/remove-icon]
+     [:> icon-button* {:variant "action"
+                       :icon i/remove
+                       :icon-size "s"
+                       :aria-label (tr "shortcuts.decrease-zoom")
+                       :on-click on-decrease}]
      [:button {:class (stl/css :zoom-reset)
                :aria-label (tr "workspace.header.reset-zoom")
                :title (tr "workspace.header.reset-zoom")
                :on-click on-reset}
       (dm/str (js/Math.round (* 100 (or zoom 1))) "%")]
-     [:button {:class (stl/css :zoom-btn)
-               :aria-label (tr "shortcuts.increase-zoom")
-               :on-click on-increase}
-      deprecated-icon/add]]))
+     [:> icon-button* {:variant "action"
+                       :icon i/add
+                       :icon-size "s"
+                       :aria-label (tr "shortcuts.increase-zoom")
+                       :on-click on-increase}]]))
 
 (mf/defc header*
   [{:keys [project file page frames frame mode permissions]}]
@@ -291,8 +298,9 @@
         [:> bg-swatches* {:selected preview-bg
                           :on-change on-bg-change}])
       (when (:in-team permissions)
-        [:button {:class (stl/css :share-btn)
-                  :on-click open-share-dialog}
+        [:> button* {:variant "primary"
+                     :class (stl/css :share-btn)
+                     :on-click open-share-dialog}
          (tr "labels.share")])
       (when (:can-edit permissions)
         [:> icon-button* {:variant "ghost"

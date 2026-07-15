@@ -18,8 +18,8 @@
   inline-size: $sz-252;
   min-inline-size: $sz-252;
   block-size: 100%;
-  background-color: var(--panel-background-color);
-  border-inline-end: 1px solid var(--panel-border-color);
+  background-color: var(--color-background-primary);
+  border-inline-end: $b-1 solid var(--color-background-quaternary);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -37,17 +37,16 @@
 // Single row (mirrors workspace's `.layer-row`)
 //
 // Foreground colours mirror the workspace's `.element-name` /
-// `.element-name.type-comp` rules so component layers stand out in
-// the same way as in the workspace sidebar:
-// - `--element-name-color` for regular shapes
-// - `--element-name-comp-color` for component instance heads
-// Both ultimately resolve to the same theme tokens
-// (`--layer-row-foreground-color` / `--layer-row-component-foreground-color`).
+// `.element-name.type-comp` rules so component layers stand out in the
+// same way as in the workspace sidebar. The legacy tokens those rules
+// use (`--layer-row-foreground-color`, `--layer-row-component-
+// foreground-color`, `--layer-row-foreground-color-selected`) resolve
+// to the DS tokens referenced here.
 
 .layer-row {
   --layer-indentation-size: var(--sp-l);
   --layer-background-color: transparent;
-  --layer-foreground-color: var(--element-name-color, var(--layer-row-foreground-color));
+  --layer-foreground-color: var(--color-foreground-secondary);
   --icon-foreground-color: var(--layer-foreground-color);
 
   display: flex;
@@ -64,13 +63,13 @@
   }
 
   &.layer-row-component {
-    --layer-foreground-color: var(--element-name-comp-color, var(--layer-row-component-foreground-color));
+    --layer-foreground-color: var(--color-accent-secondary);
   }
 
   &.selected {
     --layer-background-color: var(--color-background-quaternary);
-    --layer-foreground-color: var(--layer-row-foreground-color-selected, var(--color-accent-tertiary));
-    --icon-foreground-color: var(--layer-row-foreground-color-selected, var(--color-accent-tertiary));
+    --layer-foreground-color: var(--color-accent-primary);
+    --icon-foreground-color: var(--color-accent-primary);
   }
 }
 

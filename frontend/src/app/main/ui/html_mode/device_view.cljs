@@ -201,7 +201,6 @@
     [:div {:class (stl/css :device-view) :ref root-ref}
      [:> icon-button* {:variant "ghost"
                        :icon i/monitor-smartphone
-                       :class (stl/css :device-view-btn)
                        :on-click on-toggle
                        :aria-label (tr "viewer.html-mode.device-view.toggle")}]
 
@@ -312,7 +311,6 @@
         [:span {:class (stl/css :row-label)}
          (tr "viewer.html-mode.device-view.interaction")]
         [:> select* {:default-selected (d/name (or interaction :mouse))
-                     :class (stl/css :interaction-select)
                      :options [{:id "mouse"
                                 :label (tr "viewer.html-mode.device-view.interaction.mouse")}
                                {:id "touch"

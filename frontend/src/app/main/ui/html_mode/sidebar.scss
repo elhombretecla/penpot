@@ -7,19 +7,14 @@
 @use "ds/typography.scss" as *;
 @use "ds/_sizes.scss" as *;
 @use "ds/_borders.scss" as *;
+@use "ds/_utils.scss" as *;
 @use "ds/mixins.scss" as *;
-@use "refactor/common-refactor.scss" as deprecated;
+@use "./_shared.scss" as *;
 
 // The same low-emphasis fallback the Inspect's `style-box` relies on,
 // declared here too so HTML Mode renders the same panel background
 // whether or not Inspect has been rendered first in the same session.
-:global(.light) {
-  --low-emphasis-background: #fafafa;
-}
-
-:global(.default) {
-  --low-emphasis-background: #121214;
-}
+@include low-emphasis-vars;
 
 // ---------------------------------------------------------------------------
 // Sidebar shell (mirrors `app.main.ui.inspect.right-sidebar/settings-bar-right`)
@@ -29,8 +24,8 @@
   inline-size: $sz-352;
   min-inline-size: $sz-252;
   block-size: 100%;
-  background-color: var(--panel-background-color);
-  border-inline-start: 1px solid var(--panel-border-color);
+  background-color: var(--color-background-primary);
+  border-inline-start: $b-1 solid var(--color-background-quaternary);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -80,31 +75,14 @@
 
 .layer-title {
   @include use-typography("headline-medium");
-  @include deprecated.text-ellipsis;
+  @include text-ellipsis;
 
   color: var(--color-foreground-primary);
 }
 
+// DS button* (secondary variant); we only keep it from shrinking.
 .export-button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-xs);
-  block-size: $sz-32;
-  padding-inline: var(--sp-s);
-  border: 1px solid var(--color-background-quaternary);
-  border-radius: $br-8;
-  background: var(--color-background-tertiary);
-  color: var(--color-foreground-primary);
-  cursor: pointer;
   flex: none;
-
-  @include use-typography("body-small");
-
-  --icon-stroke-color: var(--color-foreground-secondary);
-
-  &:hover {
-    background: var(--color-background-quaternary);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +110,7 @@
   padding-block: var(--sp-s);
   padding-inline: var(--sp-m);
   background-color: var(--low-emphasis-background);
-  border-block-end: 2px solid var(--box-border-color);
+  border-block-end: $b-2 solid var(--box-border-color);
 }
 
 .section-header {
@@ -173,9 +151,10 @@
 
 .section-component {
   // The icon and "COMPONENT" label adopt the same accent the workspace
-  // uses for component layers, so the header reads as a sibling of the
-  // left-sidebar's component-coloured rows.
-  --component-accent: var(--layer-row-component-foreground-color, var(--color-accent-secondary));
+  // uses for component layers (`--layer-row-component-foreground-color`
+  // resolves to this same DS token), so the header reads as a sibling
+  // of the left-sidebar's component-coloured rows.
+  --component-accent: var(--color-accent-secondary);
 }
 
 .component-header {
@@ -231,14 +210,11 @@
 }
 
 .section-title {
-  @include use-typography("body-small");
+  @include eyebrow;
 
   flex: 1;
   color: var(--title-color);
   padding-block: var(--title-padding);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 600;
 }
 
 .section-action {
@@ -282,7 +258,7 @@
 // padding → success (green), content/selection → primary.
 .box-margin {
   background: color-mix(in srgb, var(--color-accent-warning) 18%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent-warning) 55%, transparent);
+  border: $b-1 solid color-mix(in srgb, var(--color-accent-warning) 55%, transparent);
 }
 
 .box-border {
@@ -290,7 +266,7 @@
   grid-row: 2;
   inline-size: 100%;
   background: color-mix(in srgb, var(--color-accent-info) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent-info) 55%, transparent);
+  border: $b-1 solid color-mix(in srgb, var(--color-accent-info) 55%, transparent);
 }
 
 .box-padding {
@@ -298,7 +274,7 @@
   grid-row: 2;
   inline-size: 100%;
   background: color-mix(in srgb, var(--color-accent-success) 18%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent-success) 55%, transparent);
+  border: $b-1 solid color-mix(in srgb, var(--color-accent-success) 55%, transparent);
 }
 
 .box-content {
@@ -310,13 +286,11 @@
   align-items: center;
   justify-content: center;
   background: color-mix(in srgb, var(--color-accent-primary) 20%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent-primary) 55%, transparent);
+  border: $b-1 solid color-mix(in srgb, var(--color-accent-primary) 55%, transparent);
   border-radius: $br-4;
   color: var(--color-foreground-primary);
 
   @include use-typography("body-medium");
-
-  font-weight: 600;
 }
 
 .box-tag {
@@ -372,7 +346,7 @@
   border-radius: $br-6;
   color: var(--color-foreground-primary);
   cursor: pointer;
-  margin-left: auto;
+  margin-inline-start: auto;
 
   @include use-typography("body-small");
 
@@ -405,10 +379,10 @@
   gap: var(--sp-s);
   padding: var(--sp-s);
   background: var(--color-background-secondary);
-  border: 1px solid var(--color-background-quaternary);
+  border: $b-1 solid var(--color-background-quaternary);
   border-radius: $br-8;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.16);
-  z-index: 10;
+  box-shadow: var(--el-shadow-dark);
+  z-index: var(--z-index-dropdown);
   min-inline-size: $sz-252;
 }
 
@@ -420,74 +394,38 @@
 }
 
 .segmented-label {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-foreground-secondary);
-
-  @include use-typography("body-small");
-
-  font-weight: 600;
+  @include segmented-label(0.04em);
 }
 
+// This segmented control sits on the low-emphasis panel, so the
+// track/active backgrounds are inverted relative to the modal's.
 .segmented-options {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-xxs);
-  padding: var(--sp-xxs);
-  background: var(--color-background-primary);
-  border-radius: $br-6;
+  @include segmented-options(var(--color-background-primary));
 }
 
 .segmented-option {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--color-foreground-secondary);
-  padding: var(--sp-xxs) var(--sp-xs);
-  border-radius: $br-4;
-  cursor: pointer;
-  text-transform: lowercase;
-
-  @include use-typography("body-small");
-
-  &:hover {
-    color: var(--color-foreground-primary);
-  }
+  @include segmented-option(var(--sp-xs));
 }
 
 .segmented-option-active {
-  background: var(--color-background-tertiary);
-  color: var(--color-foreground-primary);
+  @include segmented-option-active(var(--color-background-tertiary), false);
 }
 
 // ---------------------------------------------------------------------------
-// Copy button (styles header)
+// Copy button (styles header). DS button* (ghost variant); the local
+// classes only compact it to the section-header footprint and paint
+// the "copied" confirmation, overriding the button's custom props
+// (same pattern as `.layout-toggle-active`).
 
 .copy-button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-xs);
-  block-size: $sz-24;
-  padding-inline: var(--sp-xs);
-  border: none;
-  background: transparent;
-  border-radius: $br-6;
-  color: var(--color-foreground-primary);
-  cursor: pointer;
+  --button-height: #{$sz-24};
 
-  @include use-typography("body-small");
-
-  --icon-stroke-color: var(--color-foreground-secondary);
-
-  &:hover {
-    background: var(--color-background-tertiary);
-  }
+  flex: none;
 }
 
 .copy-button-active {
-  --icon-stroke-color: var(--color-accent-primary);
-
-  color: var(--color-accent-primary);
+  --button-fg-color: var(--color-accent-primary);
+  --button-hover-fg-color: var(--color-accent-primary);
 }
 
 // ---------------------------------------------------------------------------
@@ -554,9 +492,9 @@
   inline-size: $sz-12;
   block-size: $sz-12;
   margin-inline-end: var(--sp-xxs);
-  border-radius: 50%;
-  border: 1px solid var(--color-background-quaternary);
-  vertical-align: -2px;
+  border-radius: $br-circle;
+  border: $b-1 solid var(--color-background-quaternary);
+  vertical-align: px2rem(-2);
 }
 
 // ---------------------------------------------------------------------------
@@ -645,7 +583,7 @@
 
 .asset-name {
   @include use-typography("body-small");
-  @include deprecated.text-ellipsis;
+  @include text-ellipsis;
 
   color: var(--color-foreground-primary);
 }
@@ -662,16 +600,10 @@
 // Empty state (no shape selected)
 
 .empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-s);
+  @include empty-state;
+
   padding-block: var(--sp-xxxl);
   padding-inline: var(--sp-xl);
-  text-align: center;
-  color: var(--color-foreground-secondary);
 }
 
 .empty-description {

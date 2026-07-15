@@ -6,8 +6,10 @@
 
 @use "ds/_borders.scss" as *;
 @use "ds/_sizes.scss" as *;
+@use "ds/_utils.scss" as *;
 @use "ds/typography.scss" as t;
 @use "ds/mixins.scss" as *;
+@use "./_shared.scss" as *;
 
 // `.device-view` lives in the page header's right-zone (next to the
 // Zoom widget). `position: relative` anchors the popover to the button.
@@ -19,16 +21,16 @@
   position: absolute;
   inset-block-start: calc(100% + var(--sp-xs));
   inset-inline-end: 0;
-  z-index: 10;
-  inline-size: 280px;
+  z-index: var(--z-index-dropdown);
+  inline-size: px2rem(280);
   display: flex;
   flex-direction: column;
   gap: var(--sp-s);
   padding: var(--sp-s);
-  border-radius: var(--sp-s);
+  border-radius: $br-8;
   background-color: var(--color-background-primary);
-  border: 1px solid var(--color-background-quaternary);
-  box-shadow: 0 8px 32px rgb(0 0 0 / 0.24);
+  border: $b-1 solid var(--color-background-quaternary);
+  box-shadow: var(--el-shadow-dark);
 }
 
 .row {
@@ -38,7 +40,7 @@
 }
 
 .preset-row {
-  border-block-end: 1px solid var(--color-background-quaternary);
+  border-block-end: $b-1 solid var(--color-background-quaternary);
   padding-block-end: var(--sp-s);
 }
 
@@ -47,11 +49,10 @@
 }
 
 .row-label {
-  @include t.use-typography("body-medium");
+  @include t.use-typography("body-small");
 
-  font-size: 0.75rem;
   color: var(--color-foreground-primary);
-  width: 100%;
+  inline-size: 100%;
 }
 
 // --- Size preset select (same look as the workspace frame presets) --------
@@ -73,11 +74,10 @@
 }
 
 .select-name {
-  @include t.use-typography("body-medium");
+  @include t.use-typography("body-small");
 
   flex-grow: 1;
   color: var(--color-foreground-primary);
-  font-size: 0.75rem;
 }
 
 .collapsed-icon {
@@ -92,21 +92,21 @@
   position: absolute;
   inset-block-start: calc(100% + var(--sp-xs));
   inset-inline-start: 0;
-  z-index: 11;
-  inline-size: 260px;
+  z-index: var(--z-index-dropdown);
+  inline-size: px2rem(260);
   max-block-size: 50vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border-radius: $br-8;
   background-color: var(--color-background-primary);
-  border: 1px solid var(--color-background-quaternary);
-  box-shadow: 0 8px 32px rgb(0 0 0 / 0.24);
+  border: $b-1 solid var(--color-background-quaternary);
+  box-shadow: var(--el-shadow-dark);
 }
 
 .preset-search {
   padding: var(--sp-xs);
-  border-block-end: 1px solid var(--color-background-quaternary);
+  border-block-end: $b-1 solid var(--color-background-quaternary);
 }
 
 .preset-list {
@@ -118,64 +118,66 @@
   margin: 0;
   padding: var(--sp-xs);
   list-style: none;
+}
 
-  .dropdown-element {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-s);
-    block-size: $sz-32;
-    padding-inline: var(--sp-s);
-    border-radius: $br-8;
-    cursor: pointer;
+// One row per preset. Tier-3 vars are reassigned by the `.disabled`
+// group-header modifier so `.preset-name` needs no descendant selector.
+.dropdown-element {
+  --preset-name-color: var(--color-foreground-primary);
+  --preset-name-transform: none;
 
-    .name-wrapper {
-      display: flex;
-      gap: var(--sp-s);
-      flex-grow: 1;
-      justify-content: space-between;
-      min-inline-size: 0;
-    }
+  display: flex;
+  align-items: center;
+  gap: var(--sp-s);
+  block-size: $sz-32;
+  padding-inline: var(--sp-s);
+  border-radius: $br-8;
+  cursor: pointer;
 
-    .preset-name {
-      @include t.use-typography("body-medium");
-
-      font-size: 0.75rem;
-      color: var(--color-foreground-primary);
-      white-space: nowrap;
-    }
-
-    .preset-size {
-      @include t.use-typography("body-small");
-
-      color: var(--color-foreground-secondary);
-      white-space: nowrap;
-    }
-
-    .check-icon {
-      display: flex;
-      align-items: center;
-
-      // DS icon* paints via `stroke: currentColor`.
-      color: var(--color-accent-primary);
-    }
-
-    &.disabled {
-      pointer-events: none;
-      cursor: default;
-
-      .preset-name {
-        @include t.use-typography("body-small");
-
-        color: var(--color-foreground-secondary);
-        text-transform: uppercase;
-      }
-    }
-
-    &:not(.disabled):hover,
-    &.match {
-      background-color: var(--color-background-tertiary);
-    }
+  &:not(.disabled):hover,
+  &.match {
+    background-color: var(--color-background-tertiary);
   }
+
+  // Group headers reuse the row markup, de-emphasized and inert.
+  &.disabled {
+    --preset-name-color: var(--color-foreground-secondary);
+    --preset-name-transform: uppercase;
+
+    pointer-events: none;
+    cursor: default;
+  }
+}
+
+.name-wrapper {
+  display: flex;
+  gap: var(--sp-s);
+  flex-grow: 1;
+  justify-content: space-between;
+  min-inline-size: 0;
+}
+
+.preset-name {
+  @include t.use-typography("body-small");
+
+  color: var(--preset-name-color);
+  text-transform: var(--preset-name-transform);
+  white-space: nowrap;
+}
+
+.preset-size {
+  @include t.use-typography("body-small");
+
+  color: var(--color-foreground-secondary);
+  white-space: nowrap;
+}
+
+.check-icon {
+  display: flex;
+  align-items: center;
+
+  // DS icon* paints via `stroke: currentColor`.
+  color: var(--color-accent-primary);
 }
 
 .orientation {
@@ -216,19 +218,10 @@
   gap: var(--sp-xs);
 }
 
-// Quick preset swatch (one per `bg-presets` colour).
+// Quick preset swatch (one per `bg-presets` colour). Shared with the
+// header's bg picker via `_shared.scss`.
 .bg-swatch {
-  inline-size: $sz-24;
-  block-size: $sz-24;
-  padding: 0;
-  border: 2px solid var(--df-secondary);
-  border-radius: $br-8;
-  cursor: pointer;
-
-  &.selected {
-    outline: 2px solid var(--color-accent-primary);
-    outline-offset: 1px;
-  }
+  @include bg-swatch;
 }
 
 // Eyedropper that opens the OS color picker (custom colour). It's a label

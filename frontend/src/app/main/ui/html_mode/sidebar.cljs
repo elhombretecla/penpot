@@ -33,6 +33,7 @@
    [app.main.render :as render]
    [app.main.store :as st]
    [app.main.ui.components.dropdown :refer [dropdown]]
+   [app.main.ui.ds.buttons.button :refer [button*]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :refer [icon*] :as i]
    [app.main.ui.html-mode.refs :as hrefs]
@@ -643,13 +644,13 @@
            (when (and shape page file)
              (st/emit! (modal/show :html-mode-export-shape
                                    {:file file :page page :shape shape})))))]
-    [:button {:type "button"
-              :class (stl/css :export-button)
-              :on-click on-click
-              :title (tr "viewer.html-mode.sidebar.export.title")
-              :aria-label (tr "viewer.html-mode.sidebar.export.title")}
-     [:> icon* {:icon-id i/code :size "s"}]
-     [:span (tr "viewer.html-mode.sidebar.export.label")]]))
+    [:> button* {:variant "secondary"
+                 :icon i/code
+                 :class (stl/css :export-button)
+                 :on-click on-click
+                 :title (tr "viewer.html-mode.sidebar.export.title")
+                 :aria-label (tr "viewer.html-mode.sidebar.export.title")}
+     (tr "viewer.html-mode.sidebar.export.label")]))
 
 ;; ---------------------------------------------------------------------------
 ;; Sidebar shell
@@ -723,7 +724,7 @@
         [:div {:class (stl/css :inspect-content)}
 
          ;; BOX MODEL
-         [:section {:class (stl/css :section :section-box-model)}
+         [:section {:class (stl/css :section)}
           [:header {:class (stl/css :section-header)}
            [:span {:class (stl/css :section-title)}
             (tr "viewer.html-mode.sidebar.box-model.title")]]
@@ -734,7 +735,7 @@
          [:> component-panel* {:shape shape :page page}]
 
          ;; STYLES
-         [:section {:class (stl/css :section :section-styles)}
+         [:section {:class (stl/css :section)}
           [:header {:class (stl/css :section-header :styles-header)}
            [:span {:class (stl/css :section-title)}
             (tr "viewer.html-mode.sidebar.style.title")]
@@ -742,17 +743,16 @@
             [:> format-picker* {:color (:color format)
                                 :unit (:unit format)
                                 :on-change on-format-change}]
-            [:button {:type "button"
-                      :class (stl/css-case :copy-button true
-                                           :copy-button-active copied)
-                      :on-click on-copy
-                      :aria-label (tr "viewer.html-mode.sidebar.copy")
-                      :data-active (str copied)}
-             [:> icon* {:icon-id (if copied i/tick i/clipboard)
-                        :size "s"}]
-             [:span (if copied
-                      (tr "viewer.html-mode.sidebar.copied")
-                      (tr "viewer.html-mode.sidebar.copy"))]]]]
+            [:> button* {:variant "ghost"
+                         :icon (if copied i/tick i/clipboard)
+                         :class (stl/css-case :copy-button true
+                                              :copy-button-active copied)
+                         :on-click on-copy
+                         :aria-label (tr "viewer.html-mode.sidebar.copy")
+                         :data-active (str copied)}
+             (if copied
+               (tr "viewer.html-mode.sidebar.copied")
+               (tr "viewer.html-mode.sidebar.copy"))]]]
           [:div {:class (stl/css :section-content)}
            (if (seq decls)
              [:> style-panel* {:decls decls :groups groups :format format}]

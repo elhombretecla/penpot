@@ -6,8 +6,10 @@
 
 @use "ds/_borders.scss" as *;
 @use "ds/_sizes.scss" as *;
+@use "ds/_utils.scss" as *;
 @use "ds/typography.scss" as t;
 @use "ds/mixins.scss" as *;
+@use "./_shared.scss" as *;
 
 // ---------------------------------------------------------------------------
 // Shell
@@ -24,13 +26,7 @@
 // Empty state (no components instantiated on this page)
 
 .empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-s);
-  color: var(--color-foreground-secondary);
+  @include empty-state;
 }
 
 .empty-description {
@@ -45,8 +41,8 @@
 .sidebar {
   flex: none;
   inline-size: $sz-284;
-  background-color: var(--panel-background-color);
-  border-inline-end: 1px solid var(--panel-border-color);
+  background-color: var(--color-background-primary);
+  border-inline-end: $b-1 solid var(--color-background-quaternary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -55,7 +51,7 @@
 .sidebar-search {
   padding-block: var(--sp-s);
   padding-inline: var(--sp-s);
-  border-block-end: 1px solid var(--color-border-primary);
+  border-block-end: $b-1 solid var(--color-background-quaternary);
 }
 
 .sidebar-tree {
@@ -96,7 +92,7 @@
   border: none;
   padding-block: var(--sp-xs);
   padding-inline: var(--sp-xs);
-  border-radius: 4px;
+  border-radius: $br-4;
   cursor: pointer;
   color: var(--color-foreground-secondary);
   text-align: start;
@@ -125,13 +121,19 @@
 .tree-group-body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-xxs);
   padding-inline-start: var(--sp-s);
-  border-inline-start: 1px solid var(--color-border-primary);
+  border-inline-start: $b-1 solid var(--color-background-quaternary);
   margin-inline-start: var(--sp-xs);
 }
 
+// Tier-3 vars live on the row and are reassigned by the `-active`
+// modifier, so the icon / badge children need no descendant selectors.
 .tree-item {
+  --tree-item-icon-color: var(--color-foreground-secondary);
+  --tree-item-badge-bg: var(--color-background-tertiary);
+  --tree-item-badge-fg: var(--color-foreground-secondary);
+
   display: flex;
   align-items: center;
   gap: var(--sp-xs);
@@ -140,7 +142,7 @@
   padding-inline: var(--sp-s);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: $br-4;
   cursor: pointer;
   text-align: start;
   color: var(--color-foreground-primary);
@@ -152,26 +154,26 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-accent-tertiary);
+    outline: $b-2 solid var(--color-accent-tertiary);
     outline-offset: -1px;
   }
 }
 
 .tree-item-active {
+  --tree-item-icon-color: var(--color-accent-tertiary);
+  --tree-item-badge-bg: var(--color-accent-tertiary);
+  --tree-item-badge-fg: var(--color-background-primary);
+
   background-color: var(--color-background-quaternary);
   color: var(--color-accent-tertiary);
 
   &:hover {
     background-color: var(--color-background-quaternary);
   }
-
-  .tree-item-icon {
-    color: var(--color-accent-tertiary);
-  }
 }
 
 .tree-item-icon {
-  color: var(--color-foreground-secondary);
+  color: var(--tree-item-icon-color, var(--color-foreground-secondary));
   flex: none;
 }
 
@@ -186,17 +188,12 @@
   @include t.use-typography("body-small");
 
   flex: none;
-  background-color: var(--color-background-tertiary);
-  color: var(--color-foreground-secondary);
-  border-radius: 999px;
+  background-color: var(--tree-item-badge-bg);
+  color: var(--tree-item-badge-fg);
+  border-radius: px2rem(999);
   padding-inline: var(--sp-xs);
-  min-inline-size: 1.25rem;
+  min-inline-size: px2rem(20);
   text-align: center;
-
-  .tree-item-active & {
-    background-color: var(--color-accent-tertiary);
-    color: var(--color-background-primary);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -228,9 +225,9 @@
   gap: var(--sp-m);
   padding-block: var(--sp-m);
   padding-inline: var(--sp-l);
-  border-block-end: 1px solid var(--color-border-primary);
+  border-block-end: $b-1 solid var(--color-background-quaternary);
   position: sticky;
-  top: 0;
+  inset-block-start: 0;
   background-color: var(--color-background-primary);
   z-index: 1;
 }
@@ -238,7 +235,7 @@
 .detail-title-block {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-xxs);
   min-inline-size: 0;
 }
 
@@ -278,17 +275,7 @@
 }
 
 .bg-swatch {
-  inline-size: $sz-24;
-  block-size: $sz-24;
-  padding: 0;
-  border: 2px solid var(--df-secondary);
-  border-radius: $br-8;
-  cursor: pointer;
-
-  &.selected {
-    outline: 2px solid var(--color-accent-primary);
-    outline-offset: 1px;
-  }
+  @include bg-swatch;
 }
 
 // ---------------------------------------------------------------------------
@@ -334,36 +321,38 @@
 // narrow for the code to stay legible.
 .sections-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(px2rem(320), 1fr));
   gap: var(--sp-m);
   align-items: start;
 }
 
-// Columns mode: preview on the left, sections on the right.
-// Each side scrolls independently when it overflows; the iframe
-// stays at its fixed height while the content column can grow.
+// Columns mode: preview on the left, sections on the right. Each side
+// scrolls independently when it overflows; the iframe stays at its
+// fixed height while the content column can grow. The `-cols` modifier
+// classes are applied per element from the JSX so no descendant
+// selectors are needed.
 .detail-body-cols {
   flex-direction: row;
   align-items: flex-start;
+}
 
-  .detail-preview {
-    flex: 1 1 50%;
-    min-inline-size: 0;
-    position: sticky;
-    top: 0;
-  }
+.detail-preview-cols {
+  flex: 1 1 50%;
+  min-inline-size: 0;
+  position: sticky;
+  inset-block-start: 0;
+}
 
-  .detail-content {
-    flex: 1 1 50%;
-    min-inline-size: 0;
-    border-inline-start: 1px solid var(--color-border-primary);
-  }
+.detail-content-cols {
+  flex: 1 1 50%;
+  min-inline-size: 0;
+  border-inline-start: $b-1 solid var(--color-background-quaternary);
+}
 
-  // Stack the sections vertically on the right — preview already
-  // occupies half the pane, so a 3-column grid would be unreadable.
-  .sections-grid {
-    grid-template-columns: 1fr;
-  }
+// Stack the sections vertically on the right — preview already
+// occupies half the pane, so a 3-column grid would be unreadable.
+.sections-grid-cols {
+  grid-template-columns: 1fr;
 }
 
 // ---------------------------------------------------------------------------
@@ -375,7 +364,7 @@
   gap: var(--sp-xs);
   padding-block: var(--sp-s);
   padding-inline: var(--sp-l);
-  border-block-end: 1px solid var(--color-border-primary);
+  border-block-end: $b-1 solid var(--color-background-quaternary);
 }
 
 .variant-chip {
@@ -383,8 +372,8 @@
 
   background-color: var(--color-background-secondary);
   color: var(--color-foreground-primary);
-  border: 1px solid var(--color-border-primary);
-  border-radius: 999px;
+  border: $b-1 solid var(--color-background-quaternary);
+  border-radius: px2rem(999);
   padding-block: var(--sp-xs);
   padding-inline: var(--sp-s);
   cursor: pointer;
@@ -395,7 +384,7 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-accent-tertiary);
+    outline: $b-2 solid var(--color-accent-tertiary);
     outline-offset: 1px;
   }
 }
@@ -421,23 +410,27 @@
 }
 
 .preview-iframe {
+  --preview-block-size: #{px2rem(360)};
+
   inline-size: 100%;
-  block-size: 360px;
-  border: 1px solid var(--color-border-primary);
-  border-radius: 8px;
+  block-size: var(--preview-block-size);
+  border: $b-1 solid var(--color-background-quaternary);
+  border-radius: $br-8;
   background-color: var(--color-background-secondary);
 }
 
 .preview-loading {
   @include t.use-typography("body-small");
 
+  --preview-block-size: #{px2rem(360)};
+
   display: flex;
   align-items: center;
   justify-content: center;
   inline-size: 100%;
-  block-size: 360px;
-  border: 1px dashed var(--color-border-primary);
-  border-radius: 8px;
+  block-size: var(--preview-block-size);
+  border: $b-1 dashed var(--color-background-quaternary);
+  border-radius: $br-8;
   color: var(--color-foreground-secondary);
 }
 
@@ -467,7 +460,6 @@
 
   color: var(--color-foreground-primary);
   margin: 0;
-  font-weight: 500;
 }
 
 // ---------------------------------------------------------------------------
@@ -483,42 +475,17 @@
   gap: var(--sp-s);
 }
 
-// Tight icon-only copy button for the section header. Same dims as the
-// `format-picker*` trigger so the row of controls stays uniform.
+// Tight icon-only copy button for the section header — DS icon-button*
+// ("action" variant, 24px) matches the format-picker* trigger's dims so
+// the row of controls stays uniform.
 .section-copy {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: $sz-24;
-  block-size: $sz-24;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: $br-4;
-  cursor: pointer;
-  color: var(--color-foreground-secondary);
   flex: none;
-
-  &:hover {
-    background-color: var(--color-background-secondary);
-    color: var(--color-foreground-primary);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--color-accent-primary);
-    outline-offset: 1px;
-  }
-
-  &:disabled {
-    cursor: not-allowed;
-    opacity: 0.4;
-  }
 }
 
 // ---------------------------------------------------------------------------
-// Segmented control (FORMAT html/jsx, STYLING css/tailwind).
-// Mirrors the `export_modal.scss` styles so the two surfaces feel like
-// the same control.
+// Segmented control (FORMAT html/jsx, STYLING css/tailwind). Shared
+// with `export_modal.scss` via the `_shared.scss` mixins so the two
+// surfaces are the same control.
 
 .segmented {
   display: inline-flex;
@@ -527,44 +494,19 @@
 }
 
 .segmented-label {
-  @include t.use-typography("body-small");
-
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-foreground-secondary);
-  font-weight: 600;
+  @include segmented-label;
 }
 
 .segmented-options {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-xxs);
-  padding: var(--sp-xxs);
-  background: var(--color-background-tertiary);
-  border-radius: $br-6;
+  @include segmented-options;
 }
 
 .segmented-option {
-  @include t.use-typography("body-small");
-
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--color-foreground-secondary);
-  padding: var(--sp-xxs) var(--sp-s);
-  border-radius: $br-4;
-  cursor: pointer;
-  text-transform: lowercase;
-
-  &:hover {
-    color: var(--color-foreground-primary);
-  }
+  @include segmented-option;
 }
 
 .segmented-option-active {
-  background: var(--color-background-primary);
-  color: var(--color-foreground-primary);
-  box-shadow: 0 0 0 $b-1 var(--color-background-quaternary);
+  @include segmented-option-active;
 }
 
 // ---------------------------------------------------------------------------
@@ -573,19 +515,21 @@
 .code-wrapper {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--color-border-primary);
-  border-radius: 6px;
+  border: $b-1 solid var(--color-background-quaternary);
+  border-radius: $br-6;
   overflow: hidden;
   background-color: var(--hljs-bg);
   color: var(--hljs-fg);
   min-inline-size: 0;
 
+  // Deliberate nesting exception: the `pre` is rendered by the shared
+  // `code-block*` component, so we can't put a module class on it.
   pre {
     @include custom-scrollbar;
 
     margin: 0;
     padding: var(--sp-s) var(--sp-m);
-    max-block-size: 480px;
+    max-block-size: $sz-480;
     overflow-y: auto;
     background: transparent;
     color: inherit;
@@ -601,69 +545,11 @@
     overflow-wrap: anywhere;
   }
 
-  // Syntax-highlighting theme — mirrors the Export Shape modal's
-  // mapping (`export_modal.scss`) using the shared `--hljs-*` custom
-  // properties published there (Dracula Dark / Alucard Light).
-  // highlight.js wraps tokens in `<span class="hljs-…">` nodes; we
-  // reach them via `:global(...)` because they're injected at
-  // runtime and so live outside this module's local scope.
-
-  :global(.hljs-comment),
-  :global(.hljs-quote) {
-    color: var(--hljs-comment);
-    font-style: italic;
-  }
-
-  :global(.hljs-keyword),
-  :global(.hljs-tag),
-  :global(.hljs-name),
-  :global(.hljs-selector-tag),
-  :global(.hljs-doctag),
-  :global(.hljs-meta),
-  :global(.hljs-literal) {
-    color: var(--hljs-keyword);
-  }
-
-  :global(.hljs-string),
-  :global(.hljs-attribute-value),
-  :global(.hljs-regexp),
-  :global(.hljs-template-tag),
-  :global(.hljs-template-variable) {
-    color: var(--hljs-string);
-  }
-
-  :global(.hljs-number),
-  :global(.hljs-symbol),
-  :global(.hljs-bullet) {
-    color: var(--hljs-number);
-  }
-
-  :global(.hljs-attr),
-  :global(.hljs-attribute) {
-    color: var(--hljs-attribute);
-  }
-
-  :global(.hljs-property),
-  :global(.hljs-built_in),
-  :global(.hljs-title),
-  :global(.hljs-class .hljs-title),
-  :global(.hljs-function .hljs-title),
-  :global(.hljs-params),
-  :global(.hljs-variable) {
-    color: var(--hljs-property);
-  }
-
-  :global(.hljs-selector-class),
-  :global(.hljs-selector-id),
-  :global(.hljs-selector-pseudo),
-  :global(.hljs-selector-attr) {
-    color: var(--hljs-selector);
-  }
-
-  :global(.hljs-punctuation),
-  :global(.hljs-operator) {
-    color: var(--hljs-punct);
-  }
+  // Syntax-highlighting theme — the `--hljs-*` palette is published by
+  // `_shared.scss` (included once from html_mode.scss) and the token
+  // mapping is the shared mixin, so this stays in sync with the Export
+  // modal and the Design Tokens CSS view.
+  @include hljs-syntax-theme;
 }
 
 // Shown in place of the CSS code block when the user selects
@@ -675,8 +561,8 @@
   padding: var(--sp-m);
   color: var(--color-foreground-secondary);
   text-align: center;
-  border: 1px dashed var(--color-border-primary);
-  border-radius: 6px;
+  border: $b-1 dashed var(--color-background-quaternary);
+  border-radius: $br-6;
 }
 
 // ---------------------------------------------------------------------------
@@ -688,8 +574,8 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--color-border-primary);
-  border-radius: 6px;
+  border: $b-1 solid var(--color-background-quaternary);
+  border-radius: $br-6;
   overflow: hidden;
 }
 
@@ -700,8 +586,8 @@
   padding: var(--sp-m);
   color: var(--color-foreground-secondary);
   text-align: center;
-  border: 1px dashed var(--color-border-primary);
-  border-radius: 6px;
+  border: $b-1 dashed var(--color-background-quaternary);
+  border-radius: $br-6;
 }
 
 .token-row {
@@ -713,7 +599,7 @@
   padding-inline: var(--sp-m);
 
   &:not(:last-child) {
-    border-block-end: 1px solid var(--color-border-primary);
+    border-block-end: $b-1 solid var(--color-background-quaternary);
   }
 }
 

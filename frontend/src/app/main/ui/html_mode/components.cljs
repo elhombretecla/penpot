@@ -389,12 +389,13 @@
              (clipboard/to-clipboard data)
              (reset! copied* true)
              (tm/schedule 1000 #(reset! copied* false)))))]
-    [:button {:type "button"
-              :class (stl/css :section-copy)
-              :on-click on-click
-              :disabled (str/blank? data)
-              :aria-label aria-label}
-     [:> icon* {:icon-id (if copied i/tick i/clipboard) :size "s"}]]))
+    [:> icon-button* {:variant "action"
+                      :icon (if copied i/tick i/clipboard)
+                      :icon-size "s"
+                      :class (stl/css :section-copy)
+                      :on-click on-click
+                      :disabled (str/blank? data)
+                      :aria-label aria-label}]))
 
 ;; ---------------------------------------------------------------------------
 ;; Segmented control (FORMAT html/jsx, STYLING css/tailwind). Same UX
@@ -633,13 +634,17 @@
               [:div {:class (stl/css-case
                              :detail-body true
                              :detail-body-cols (= layout-mode :columns))}
-               [:div {:class (stl/css :detail-preview)}
+               [:div {:class (stl/css-case
+                              :detail-preview true
+                              :detail-preview-cols (= layout-mode :columns))}
                 [:div {:class (stl/css :preview-wrapper)}
                  [:> preview-frame* {:key (str (:id active-variant))
                                      :file file
                                      :page syn-page-preview}]]]
 
-               [:div {:class (stl/css :detail-content)}
+               [:div {:class (stl/css-case
+                              :detail-content true
+                              :detail-content-cols (= layout-mode :columns))}
                 (when (seq props)
                   [:> section-disclosure*
                    {:title (tr "viewer.html-mode.components.variant-properties")
@@ -654,7 +659,9 @@
                 ;; the available width is too narrow for the minimum
                 ;; per-column legibility — see `.sections-grid` in the
                 ;; SCSS.
-                [:div {:class (stl/css :sections-grid)}
+                [:div {:class (stl/css-case
+                               :sections-grid true
+                               :sections-grid-cols (= layout-mode :columns))}
                  [:> section-disclosure*
                   {:title (case code-format :jsx "JSX" "HTML")
                    :testid "html-mode-components-html"

@@ -8,7 +8,11 @@
 @use "ds/_sizes.scss" as *;
 @use "ds/_borders.scss" as *;
 @use "ds/z-index.scss" as *;
+@use "./_shared.scss" as *;
 
+// TODO(ds-modal): the `--overlay-color` / `--modal-*` tokens below are
+// legacy theme tokens; the guide allows keeping them until the DS modal
+// component lands.
 .modal-overlay {
   display: flex;
   justify-content: center;
@@ -87,58 +91,30 @@
 }
 
 .segmented-label {
-  @include use-typography("body-small");
-
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-foreground-secondary);
-  font-weight: 600;
+  @include segmented-label;
 }
 
 .segmented-options {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-xxs);
-  padding: var(--sp-xxs);
-  background: var(--color-background-tertiary);
-  border-radius: $br-6;
+  @include segmented-options;
 }
 
 .segmented-option {
-  @include use-typography("body-small");
-
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--color-foreground-secondary);
-  padding: var(--sp-xxs) var(--sp-s);
-  border-radius: $br-4;
-  cursor: pointer;
-  text-transform: lowercase;
-
-  &:hover {
-    color: var(--color-foreground-primary);
-  }
+  @include segmented-option;
 }
 
 .segmented-option-active {
-  background: var(--color-background-primary);
-  color: var(--color-foreground-primary);
-  box-shadow: 0 0 0 $b-1 var(--color-background-quaternary);
+  @include segmented-option-active;
 }
 
 .data-attrs-toggle {
   margin-inline-start: auto;
 
-  // The DS checkbox uses its own typography; the label inside it is the
-  // small uppercase tag matching the segmented controls in this row.
+  // Deliberate nesting exception: the label is rendered inside the DS
+  // `checkbox*` component, so we can only reach it from the wrapper
+  // class we pass in. Styled as the small uppercase tag matching the
+  // segmented controls in this row.
   label {
-    @include use-typography("body-small");
-
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-foreground-secondary);
-    font-weight: 600;
+    @include segmented-label;
   }
 }
 
@@ -173,41 +149,17 @@
 }
 
 .code-block-title {
-  @include use-typography("body-small");
+  @include eyebrow(0.06em);
 
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   color: var(--color-foreground-secondary);
-  font-weight: 600;
 }
 
+// DS button* (ghost variant), compacted to the code-block header's
+// footprint via the button's own custom property.
 .copy-button {
-  @include use-typography("body-small");
+  --button-height: #{$sz-24};
 
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-xs);
-  block-size: $sz-24;
-  padding: 0 var(--sp-s);
-  border: none;
-  border-radius: $br-6;
-  background: transparent;
-  color: var(--color-foreground-secondary);
-  cursor: pointer;
-
-  --icon-stroke-color: var(--color-foreground-secondary);
-
-  &:hover {
-    background: var(--color-background-quaternary);
-    color: var(--color-foreground-primary);
-
-    --icon-stroke-color: var(--color-foreground-primary);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  flex: none;
 }
 
 .code-block-content {
@@ -261,7 +213,7 @@
 }
 
 .sem-toggle {
-  @include use-typography("body-small");
+  @include eyebrow(0.06em);
 
   inline-size: 100%;
   display: flex;
@@ -272,9 +224,6 @@
   background: transparent;
   color: var(--color-foreground-secondary);
   text-align: start;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 600;
   cursor: pointer;
 
   &:hover {
@@ -335,28 +284,13 @@
 
 .sem-quick-tag-name {
   color: var(--color-foreground-primary);
-  font-weight: 600;
 }
 
+// DS button* (secondary variant), compacted to the quick-tag row.
 .sem-apply-button {
-  @include use-typography("body-small");
+  --button-height: #{$sz-28};
 
-  block-size: $sz-28;
-  padding: 0 var(--sp-m);
-  border: $b-1 solid var(--color-background-quaternary);
-  border-radius: $br-6;
-  background: var(--color-background-tertiary);
-  color: var(--color-foreground-primary);
-  cursor: pointer;
-
-  &:hover {
-    background: var(--color-background-quaternary);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  flex: none;
 }
 
 // --- Rule list -------------------------------------------------------------
@@ -418,11 +352,10 @@
   @include use-typography("code-font");
 
   flex: none;
-  padding: 2px var(--sp-xs);
+  padding: var(--sp-xxs) var(--sp-xs);
   border-radius: $br-4;
   background: var(--color-accent-primary-muted);
   color: var(--color-accent-primary);
-  font-weight: 600;
 }
 
 .sem-rule-delete {
@@ -437,7 +370,7 @@
   align-items: center;
   gap: var(--sp-s);
   padding: var(--sp-s);
-  border: 1px dashed var(--color-background-quaternary);
+  border: $b-1 dashed var(--color-background-quaternary);
   border-radius: $br-6;
 }
 
@@ -482,52 +415,9 @@
 }
 
 // ---------------------------------------------------------------------------
-// Syntax-highlighting theme (Dracula)
-//
-// `highlight.js` wraps tokens in `<span class="hljs-…">` nodes. We expose
-// only the categories we need — tags, attributes, strings, numbers,
-// keywords, comments, selectors / properties / values for CSS — and bind
-// each to the Dracula palette (https://draculatheme.com/).
-//
-//   Penpot dark theme  → Dracula Dark  (#282A36 backdrop)
-//   Penpot light theme → Alucard      (#F8F8F2 backdrop)
-//
-// Palette is published as CSS custom properties so any consumer (the
-// export modal here, the Components tab, the Design Tokens CSS view, …)
-// gets the same theme-aware colours just by referencing `var(--hljs-…)`.
-
-:root {
-  // Dracula Dark — these are the defaults; Penpot defaults to dark.
-  // Tuned to land exactly on Dracula's reference palette so the
-  // surface, foreground, and per-category hues line up with the
-  // theme's spec rather than fighting Penpot's UI tokens.
-  --hljs-bg: #282a36; // Dracula background
-  --hljs-fg: #f8f8f2; // Dracula foreground (default text)
-  --hljs-keyword: #ff79c6; // pink — tags, keywords, CSS at-rules
-  --hljs-string: #f1fa8c; // yellow — strings, attribute values
-  --hljs-number: #bd93f9; // purple — numeric & length values
-  --hljs-property: #8be9fd; // cyan — CSS property names, JS keys
-  --hljs-attribute: #50fa7b; // green — HTML attribute names
-  --hljs-selector: #50fa7b; // green — CSS class / id / pseudo
-  --hljs-comment: #6272a4; // muted blue — comments
-  --hljs-punct: #f8f8f2; // foreground — punctuation, operators
-}
-
-// Light theme (Alucard) — the Dracula light variant. Same hue family
-// but with enough chroma to read on a near-white backdrop without
-// overpowering the surrounding UI.
-:global(.light) {
-  --hljs-bg: #f8f8f2;
-  --hljs-fg: #1f1f1f;
-  --hljs-keyword: #a3144d; // deep magenta
-  --hljs-string: #836a00; // olive
-  --hljs-number: #644ac9; // rich purple
-  --hljs-property: #036a96; // dark cyan
-  --hljs-attribute: #14710a; // deep green
-  --hljs-selector: #14710a;
-  --hljs-comment: #635d85; // purple-grey
-  --hljs-punct: #1f1f1f;
-}
+// Syntax-highlighting theme (Dracula Dark / Alucard Light). The
+// `--hljs-*` palette is published once from html_mode.scss via
+// `_shared.scss`; here we just bind the token classes to it.
 
 .code-block-content.hljs {
   background: var(--hljs-bg);
@@ -535,60 +425,5 @@
 }
 
 .code-block-content {
-  :global(.hljs-comment),
-  :global(.hljs-quote) {
-    color: var(--hljs-comment);
-    font-style: italic;
-  }
-
-  :global(.hljs-keyword),
-  :global(.hljs-tag),
-  :global(.hljs-name),
-  :global(.hljs-selector-tag),
-  :global(.hljs-doctag),
-  :global(.hljs-meta),
-  :global(.hljs-literal) {
-    color: var(--hljs-keyword);
-  }
-
-  :global(.hljs-string),
-  :global(.hljs-attribute-value),
-  :global(.hljs-regexp),
-  :global(.hljs-template-tag),
-  :global(.hljs-template-variable) {
-    color: var(--hljs-string);
-  }
-
-  :global(.hljs-number),
-  :global(.hljs-symbol),
-  :global(.hljs-bullet) {
-    color: var(--hljs-number);
-  }
-
-  :global(.hljs-attr),
-  :global(.hljs-attribute) {
-    color: var(--hljs-attribute);
-  }
-
-  :global(.hljs-property),
-  :global(.hljs-built_in),
-  :global(.hljs-title),
-  :global(.hljs-class .hljs-title),
-  :global(.hljs-function .hljs-title),
-  :global(.hljs-params),
-  :global(.hljs-variable) {
-    color: var(--hljs-property);
-  }
-
-  :global(.hljs-selector-class),
-  :global(.hljs-selector-id),
-  :global(.hljs-selector-pseudo),
-  :global(.hljs-selector-attr) {
-    color: var(--hljs-selector);
-  }
-
-  :global(.hljs-punctuation),
-  :global(.hljs-operator) {
-    color: var(--hljs-punct);
-  }
+  @include hljs-syntax-theme;
 }

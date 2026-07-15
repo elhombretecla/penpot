@@ -32,6 +32,7 @@
    [app.main.data.html-mode.semantics :as sem]
    [app.main.data.modal :as modal]
    [app.main.store :as st]
+   [app.main.ui.ds.buttons.button :refer [button*]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.controls.checkbox :refer [checkbox*]]
    [app.main.ui.ds.controls.input :refer [input*]]
@@ -88,15 +89,15 @@
     [:div {:class (stl/css :code-block)}
      [:div {:class (stl/css :code-block-header)}
       [:span {:class (stl/css :code-block-title)} title]
-      [:button {:type "button"
-                :class (stl/css :copy-button)
-                :on-click on-copy
-                :disabled empty?
-                :aria-label (tr "viewer.html-mode.export.copy")}
-       [:> icon* {:icon-id (if copied i/tick i/clipboard) :size "s"}]
-       [:span (tr (if copied
-                    "viewer.html-mode.export.copied"
-                    "viewer.html-mode.export.copy"))]]]
+      [:> button* {:variant "ghost"
+                   :icon (if copied i/tick i/clipboard)
+                   :class (stl/css :copy-button)
+                   :on-click on-copy
+                   :disabled empty?
+                   :aria-label (tr "viewer.html-mode.export.copy")}
+       (tr (if copied
+             "viewer.html-mode.export.copied"
+             "viewer.html-mode.export.copy"))]]
      [:pre {:class (stl/css-case
                     :code-block-content true
                     :hljs true
@@ -210,10 +211,10 @@
       [:> select* {:options tag-options
                    :default-selected tag
                    :on-change on-change}]]
-     [:button {:type "button"
-               :class (stl/css :sem-apply-button)
-               :disabled disabled
-               :on-click on-click}
+     [:> button* {:variant "secondary"
+                  :class (stl/css :sem-apply-button)
+                  :disabled disabled
+                  :on-click on-click}
       (tr "viewer.html-mode.export.semantics.apply")]]))
 
 (mf/defc semantic-rule-row*

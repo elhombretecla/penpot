@@ -5,8 +5,15 @@
 // Copyright (c) KALEIDOS INC
 
 @use "ds/_sizes.scss" as *;
+@use "ds/_utils.scss" as *;
 @use "ds/typography.scss" as t;
 @use "ds/mixins.scss" as *;
+@use "./html_mode/_shared.scss" as *;
+
+// Publish the shared syntax-highlighting palette (`--hljs-*`) once for
+// the whole HTML Mode page; the export modal, the Components tab and
+// the Design Tokens CSS view all consume it.
+@include hljs-palette;
 
 // Standalone page layout: fixed-height header on top, the section
 // filling the rest of the viewport.
@@ -51,7 +58,9 @@
       // is the value the device-view popover shows as the default swatch
       // (`default-bg`); an explicit user choice overrides it via the inline
       // `background-color` set in JSX.
-      background-color: #e8e9ea;
+      --stage-neutral-bg: #e8e9ea;
+
+      background-color: var(--stage-neutral-bg);
       overflow: auto;
     }
   }
@@ -94,16 +103,10 @@
 }
 
 .state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-s);
+  @include empty-state;
+
   padding-block: var(--sp-xl);
   padding-inline: var(--sp-xl);
-  color: var(--color-foreground-secondary);
-  text-align: center;
 }
 
 .title {
@@ -170,6 +173,13 @@
 // max of source / destination dimensions so neither board gets
 // clipped while sliding.
 .board-stack {
+  // Local stacking order for the board layers / overlays below; named
+  // here so the magic numbers live in one place.
+  --z-board-base: 1;
+  --z-board-top: 2;
+  --z-overlay-backdrop: 10;
+  --z-overlay-frame: 11;
+
   position: relative;
   flex: 0 0 auto;
 
@@ -185,11 +195,16 @@
 // matching inner radius so the clipped board corners follow the bezel.
 .device-frame {
   display: inline-flex;
-  padding: 12px;
-  border-radius: 32px;
+  padding: var(--sp-m);
+  border-radius: px2rem(32);
+
+  // Theme-independent bezel colour: the mockup is a physical-device
+  // prop, not UI chrome, so it must not track the Penpot theme.
   background: #111314;
   box-shadow: 0 12px 48px rgb(0 0 0 / 0.3);
 
+  // Deliberate nesting exception: both children are owned layers of the
+  // board stack whose look changes only when wrapped by the bezel.
   .board-stack {
     box-shadow: none;
   }
@@ -198,7 +213,7 @@
   // stack, so the board corners follow the bezel while overlays — which
   // are siblings of the clip — can still extend past the board edge.
   .board-clip {
-    border-radius: 20px;
+    border-radius: px2rem(20);
   }
 }
 
@@ -230,11 +245,11 @@
 
 .board-layer[data-role="base"],
 .board-layer[data-role="from"] {
-  z-index: 1;
+  z-index: var(--z-board-base);
 }
 
 .board-layer[data-role="to"] {
-  z-index: 2;
+  z-index: var(--z-board-top);
 }
 
 // Backdrop behind open overlays. Semi-transparent so the underlying
@@ -247,7 +262,7 @@
   position: absolute;
   inset: 0;
   background-color: rgb(0 0 0 / 0.2);
-  z-index: 10;
+  z-index: var(--z-overlay-backdrop);
 }
 
 // Each open overlay is its own absolutely-positioned iframe over the
@@ -257,7 +272,7 @@
 // is interactive even when a backdrop is present.
 .overlay-frame {
   position: absolute;
-  z-index: 11;
+  z-index: var(--z-overlay-frame);
   display: block;
   box-shadow: 0 4px 24px rgb(0 0 0 / 0.15);
 }

@@ -5,8 +5,11 @@
 // Copyright (c) KALEIDOS INC
 
 @use "ds/_sizes.scss" as *;
+@use "ds/_borders.scss" as *;
+@use "ds/_utils.scss" as *;
 @use "ds/typography.scss" as t;
 @use "ds/mixins.scss" as *;
+@use "./_shared.scss" as *;
 
 // ---------------------------------------------------------------------------
 // Shell — left sub-sidebar + main pane
@@ -25,8 +28,8 @@
 .left-panel {
   flex: none;
   inline-size: $sz-252;
-  background-color: var(--panel-background-color);
-  border-inline-end: 1px solid var(--panel-border-color);
+  background-color: var(--color-background-primary);
+  border-inline-end: $b-1 solid var(--color-background-quaternary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -42,7 +45,7 @@
 .left-panel-tabs {
   padding-block: var(--sp-xs);
   padding-inline: var(--sp-s);
-  border-block-end: 1px solid var(--color-border-primary);
+  border-block-end: $b-1 solid var(--color-background-quaternary);
 }
 
 // Search input sits between the sub-tabs and the categories list.
@@ -51,7 +54,7 @@
 .left-search {
   padding-block: var(--sp-s);
   padding-inline: var(--sp-s);
-  border-block-end: 1px solid var(--color-border-primary);
+  border-block-end: $b-1 solid var(--color-background-quaternary);
 }
 
 .left-categories {
@@ -88,7 +91,7 @@
   padding-inline: var(--sp-s);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: $br-4;
   text-align: start;
   color: var(--color-foreground-primary);
   cursor: pointer;
@@ -101,7 +104,7 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-accent-tertiary);
+    outline: $b-2 solid var(--color-accent-tertiary);
     outline-offset: -1px;
   }
 }
@@ -143,7 +146,7 @@
   gap: var(--sp-s);
   padding-block: var(--sp-s);
   padding-inline: var(--sp-m);
-  border-block-end: 1px solid var(--color-border-primary);
+  border-block-end: $b-1 solid var(--color-background-quaternary);
   justify-content: flex-end;
 }
 
@@ -159,7 +162,6 @@
 
   margin: 0;
   color: var(--color-foreground-primary);
-  font-weight: 600;
 }
 
 .css-actions {
@@ -173,28 +175,11 @@
 // modal so the viewer user gets the exact same SINGLE FILE / MULTIPLE
 // FILES download flow as the editor.
 
+// DS button* (secondary variant), compacted to the main-header row.
 .export-json-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-xs);
-  padding-block: var(--sp-xs);
-  padding-inline: var(--sp-s);
-  background-color: var(--color-background-primary);
-  border: 1px solid var(--color-border-primary);
-  border-radius: 4px;
-  color: var(--color-foreground-primary);
-  cursor: pointer;
+  --button-height: #{$sz-28};
 
-  @include t.use-typography("body-small");
-
-  &:hover:not(:disabled) {
-    background-color: var(--color-background-tertiary);
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
+  flex: none;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,9 +202,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-xl);
-  max-width: 1000px;
-  margin: 0 auto;
-  width: 100%;
+  max-inline-size: px2rem(1000);
+  margin-block: 0;
+  margin-inline: auto;
+  inline-size: 100%;
 }
 
 .category-section {
@@ -234,14 +220,12 @@
   gap: var(--sp-s);
   margin: 0 0 var(--sp-s) 0;
   color: var(--color-foreground-primary);
-  font-weight: 600;
 }
 
 .category-count {
   @include t.use-typography("body-small");
 
   color: var(--color-foreground-secondary);
-  font-weight: 400;
 }
 
 .no-results {
@@ -255,12 +239,12 @@
 
 .token-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(px2rem(220), 1fr));
   gap: var(--sp-s);
 }
 
 .token-grid-colors {
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(px2rem(200), 1fr));
 }
 
 // Rows view: a single full-width column so every token reads as one
@@ -293,8 +277,8 @@
   gap: var(--sp-xs) var(--sp-s);
   inline-size: 100%;
   background-color: var(--color-background-primary);
-  border: 1px solid var(--color-background-secondary);
-  border-radius: 8px;
+  border: $b-1 solid var(--color-background-secondary);
+  border-radius: $br-8;
   padding: var(--sp-s);
   min-block-size: $sz-64;
   position: relative;
@@ -357,7 +341,7 @@
   grid-area: body;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-xs);
   min-inline-size: 0;
 }
 
@@ -391,7 +375,6 @@
 
   margin: 0;
   color: var(--color-foreground-primary);
-  font-size: 0.8125rem;
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -402,7 +385,6 @@
 
   margin: 0;
   color: var(--color-foreground-secondary);
-  font-size: 0.6875rem;
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -413,28 +395,18 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: px2rem(6);
   margin-block-start: var(--sp-xs);
 }
 
 .token-attr-tag {
-  @include t.use-typography("body-small");
-
-  display: inline-flex;
-  align-items: center;
-  background-color: var(--color-background-quaternary);
-  color: var(--color-foreground-secondary);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 0.625rem;
-  line-height: 1.4;
+  @include micro-tag;
 }
 
 .token-usage {
   @include t.use-typography("body-small");
 
   color: var(--color-foreground-secondary);
-  font-size: 0.625rem;
 }
 
 // ---------------------------------------------------------------------------
@@ -447,10 +419,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: $br-4;
   background-color: var(--color-background-quaternary);
   overflow: hidden;
-  border: 1px solid var(--color-background-primary);
+  border: $b-1 solid var(--color-background-primary);
 }
 
 .token-preview-color {
@@ -460,13 +432,13 @@
 .token-preview-radius {
   inline-size: $sz-40;
   block-size: $sz-40;
-  border: 1px solid var(--color-foreground-primary);
+  border: $b-1 solid var(--color-foreground-primary);
 }
 
 .token-preview-bar {
   background-color: var(--color-foreground-primary);
-  border-radius: 2px;
-  min-block-size: 3px;
+  border-radius: px2rem(2);
+  min-block-size: px2rem(3);
 }
 
 .token-preview-stroke {
@@ -477,20 +449,20 @@
 .token-preview-rotation {
   inline-size: $sz-24;
   block-size: $sz-24;
-  border: 1px solid var(--color-foreground-primary);
+  border: $b-1 solid var(--color-foreground-primary);
 }
 
 .token-preview-opacity {
   inline-size: $sz-24;
   block-size: $sz-24;
-  border-radius: 50%;
+  border-radius: $br-circle;
   background-color: var(--color-foreground-primary);
 }
 
 .token-preview-shadow {
   inline-size: $sz-24;
   block-size: $sz-24;
-  border-radius: 4px;
+  border-radius: $br-4;
   background-color: var(--color-background-primary);
 }
 
@@ -498,7 +470,6 @@
   @include t.use-typography("body-medium");
 
   color: var(--color-foreground-primary);
-  font-weight: 600;
 }
 
 // ---------------------------------------------------------------------------
@@ -506,6 +477,7 @@
 
 .css-block {
   @include custom-scrollbar;
+  @include t.use-typography("code-font");
 
   flex: 1;
   margin: 0;
@@ -513,8 +485,6 @@
   overflow: auto;
   color: var(--color-foreground-primary);
   white-space: pre;
-  font-family: "Roboto Mono", monospace;
-  font-size: 0.75rem;
   line-height: 1.6;
 
   // The viewer root sets `user-select: none` (see `.viewer-layout` /
@@ -524,112 +494,40 @@
   // be selected and copied.
   user-select: text;
 
-  // Syntax-highlighting palette is published as CSS variables in
-  // `export_modal.scss` (with `.light` overrides for the light theme).
-  // We just map the `.hljs-…` token classes to the shared vars so the
-  // Design Tokens CSS view stays in sync with the Export modal's
-  // colouring across both themes.
+  // Syntax-highlighting palette is published once from html_mode.scss
+  // via `_shared.scss`; the shared mixin maps the `.hljs-…` token
+  // classes so this view stays in sync with the Export modal across
+  // both themes.
 
   &.hljs {
     background-color: var(--hljs-bg);
     color: var(--hljs-fg);
   }
 
-  :global(.hljs-comment),
-  :global(.hljs-quote) {
-    color: var(--hljs-comment);
-    font-style: italic;
-  }
-
-  :global(.hljs-keyword),
-  :global(.hljs-tag),
-  :global(.hljs-name),
-  :global(.hljs-selector-tag),
-  :global(.hljs-doctag),
-  :global(.hljs-meta),
-  :global(.hljs-literal) {
-    color: var(--hljs-keyword);
-  }
-
-  :global(.hljs-string),
-  :global(.hljs-attribute-value),
-  :global(.hljs-regexp),
-  :global(.hljs-template-tag),
-  :global(.hljs-template-variable) {
-    color: var(--hljs-string);
-  }
-
-  :global(.hljs-number),
-  :global(.hljs-symbol),
-  :global(.hljs-bullet) {
-    color: var(--hljs-number);
-  }
-
-  :global(.hljs-attr),
-  :global(.hljs-attribute) {
-    color: var(--hljs-attribute);
-  }
-
-  :global(.hljs-property),
-  :global(.hljs-built_in),
-  :global(.hljs-title),
-  :global(.hljs-class .hljs-title),
-  :global(.hljs-function .hljs-title),
-  :global(.hljs-params),
-  :global(.hljs-variable) {
-    color: var(--hljs-property);
-  }
-
-  :global(.hljs-selector-class),
-  :global(.hljs-selector-id),
-  :global(.hljs-selector-pseudo),
-  :global(.hljs-selector-attr) {
-    color: var(--hljs-selector);
-  }
-
-  :global(.hljs-punctuation),
-  :global(.hljs-operator) {
-    color: var(--hljs-punct);
-  }
+  @include hljs-syntax-theme;
 }
 
+// DS button* (secondary variant); the `-active` class paints the
+// "copied" confirmation via the button's custom props.
 .copy-all-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-xs);
-  padding-block: var(--sp-xs);
-  padding-inline: var(--sp-s);
-  background-color: var(--color-background-primary);
-  border: 1px solid var(--color-border-primary);
-  border-radius: 4px;
-  color: var(--color-foreground-primary);
-  cursor: pointer;
+  --button-height: #{$sz-28};
 
-  @include t.use-typography("body-small");
-
-  &:hover {
-    background-color: var(--color-background-tertiary);
-  }
+  flex: none;
 }
 
 .copy-all-btn-active {
-  color: var(--color-accent-tertiary);
-  border-color: var(--color-accent-tertiary);
+  --button-fg-color: var(--color-accent-tertiary);
+  --button-hover-fg-color: var(--color-accent-tertiary);
+  --button-border-color: var(--color-accent-tertiary);
 }
 
 // ---------------------------------------------------------------------------
 // Empty state
 
 .empty {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-s);
+  @include empty-state;
+
   padding: var(--sp-xl);
-  color: var(--color-foreground-secondary);
-  text-align: center;
 }
 
 .empty-description {
@@ -658,8 +556,8 @@
 
   flex: none;
   inline-size: $sz-252;
-  background-color: var(--panel-background-color);
-  border-inline-end: 1px solid var(--panel-border-color);
+  background-color: var(--color-background-primary);
+  border-inline-end: $b-1 solid var(--color-background-quaternary);
   display: flex;
   flex-direction: column;
   gap: var(--sp-s);
@@ -678,7 +576,7 @@
   padding-inline: var(--sp-s);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: $br-4;
   color: var(--color-foreground-primary);
   cursor: pointer;
 
@@ -687,7 +585,7 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-accent-tertiary);
+    outline: $b-2 solid var(--color-accent-tertiary);
     outline-offset: -1px;
   }
 
@@ -701,8 +599,8 @@
 .usage-elements {
   flex: none;
   inline-size: $sz-252;
-  background-color: var(--panel-background-color);
-  border-inline-end: 1px solid var(--panel-border-color);
+  background-color: var(--color-background-primary);
+  border-inline-end: $b-1 solid var(--color-background-quaternary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -717,7 +615,7 @@
   color: var(--color-foreground-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  border-block-end: 1px solid var(--color-border-primary);
+  border-block-end: $b-1 solid var(--color-background-quaternary);
 }
 
 .usage-elements-list {
@@ -728,7 +626,7 @@
   padding: var(--sp-xs);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-xxs);
   overflow-y: auto;
 }
 
@@ -744,7 +642,7 @@
   padding-inline: var(--sp-s);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: $br-4;
   text-align: start;
   color: var(--color-foreground-primary);
   cursor: pointer;
@@ -754,7 +652,7 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-accent-tertiary);
+    outline: $b-2 solid var(--color-accent-tertiary);
     outline-offset: -1px;
   }
 }
@@ -776,14 +674,7 @@
 }
 
 .usage-element-attr {
-  @include t.use-typography("body-small");
-
-  background-color: var(--color-background-quaternary);
-  color: var(--color-foreground-secondary);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 0.625rem;
-  line-height: 1.4;
+  @include micro-tag;
 }
 
 .usage-elements-empty {

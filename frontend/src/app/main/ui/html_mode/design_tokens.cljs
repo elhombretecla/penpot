@@ -40,6 +40,7 @@
    [app.main.ui.components.context-menu-a11y :refer [context-menu*]]
    [app.main.ui.components.radio-buttons :refer [radio-button radio-buttons]]
    [app.main.ui.components.search-bar :refer [search-bar*]]
+   [app.main.ui.ds.buttons.button :refer [button*]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.foundations.assets.icon :refer [icon*] :as i]
    [app.main.ui.ds.layout.tab-switcher :refer [tab-switcher*]]
@@ -804,24 +805,23 @@
              ;; same SINGLE FILE / MULTIPLE FILES preview + download
              ;; flow the editor exposes from its tokens sidebar.
              ;; Disabled when the file has no tokens library to export.
-             [:button {:type "button"
-                       :class (stl/css :export-json-btn)
-                       :on-click on-export-json
-                       :disabled (nil? tokens-lib)
-                       :aria-label (tr "viewer.html-mode.design-tokens.export-json")}
-              [:> icon* {:icon-id i/download :size "s"}]
-              [:span (tr "viewer.html-mode.design-tokens.export-json")]]
-             [:button {:type "button"
-                       :class (stl/css-case
-                               :copy-all-btn true
-                               :copy-all-btn-active copied)
-                       :on-click on-copy-all
-                       :aria-label (tr "viewer.html-mode.design-tokens.copy-all")}
-              [:> icon* {:icon-id (if copied i/tick i/clipboard)
-                         :size "s"}]
-              [:span (if copied
-                       (tr "viewer.html-mode.sidebar.copied")
-                       (tr "viewer.html-mode.design-tokens.copy-all"))]]]]
+             [:> button* {:variant "secondary"
+                          :icon i/download
+                          :class (stl/css :export-json-btn)
+                          :on-click on-export-json
+                          :disabled (nil? tokens-lib)
+                          :aria-label (tr "viewer.html-mode.design-tokens.export-json")}
+              (tr "viewer.html-mode.design-tokens.export-json")]
+             [:> button* {:variant "secondary"
+                          :icon (if copied i/tick i/clipboard)
+                          :class (stl/css-case
+                                  :copy-all-btn true
+                                  :copy-all-btn-active copied)
+                          :on-click on-copy-all
+                          :aria-label (tr "viewer.html-mode.design-tokens.copy-all")}
+              (if copied
+                (tr "viewer.html-mode.sidebar.copied")
+                (tr "viewer.html-mode.design-tokens.copy-all"))]]]
            [:pre {:class (stl/css-case :css-block true :hljs true)}
             (if (some? css-html)
               [:code {:dangerouslySetInnerHTML #js {:__html css-html}}]

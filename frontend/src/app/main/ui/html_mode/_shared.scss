@@ -1,0 +1,245 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) KALEIDOS INC
+
+// Shared HTML Mode mixins. This partial emits NO css on its own — every
+// consumer `@use`s it and includes what it needs, so styles that must
+// look identical across surfaces (segmented controls, hljs theme, empty
+// states, bg swatches) have a single source of truth.
+
+@use "ds/typography.scss" as t;
+@use "ds/_borders.scss" as *;
+@use "ds/_sizes.scss" as *;
+@use "ds/_utils.scss" as *;
+
+// ---------------------------------------------------------------------------
+// Small uppercase section/eyebrow label.
+// TODO(design): candidate for a DS typography variant (e.g. "label-small");
+// until then this mixin is the only place the tracking/weight combo lives.
+
+@mixin eyebrow($tracking: 0.04em) {
+  @include t.use-typography("body-small");
+
+  text-transform: uppercase;
+  letter-spacing: $tracking;
+  font-weight: 600;
+}
+
+// ---------------------------------------------------------------------------
+// Centered empty state (no selection / no results / loading).
+
+@mixin empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-s);
+  color: var(--color-foreground-secondary);
+  text-align: center;
+}
+
+// ---------------------------------------------------------------------------
+// Preview-background swatch button (header bg picker + device view).
+
+@mixin bg-swatch {
+  inline-size: $sz-24;
+  block-size: $sz-24;
+  padding: 0;
+  border: $b-2 solid var(--color-foreground-secondary);
+  border-radius: $br-8;
+  cursor: pointer;
+
+  &.selected {
+    outline: $b-2 solid var(--color-accent-primary);
+    outline-offset: 1px;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tiny attribute chip (token attr tags, usage element attrs).
+// TODO(design): 10px has no DS typography variant; consolidate here until
+// a "micro" label variant exists.
+
+@mixin micro-tag {
+  @include t.use-typography("body-small");
+
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--color-background-quaternary);
+  color: var(--color-foreground-secondary);
+  padding: px2rem(1) px2rem(6);
+  border-radius: $br-4;
+  font-size: px2rem(10);
+  line-height: 1.4;
+}
+
+// ---------------------------------------------------------------------------
+// Low-emphasis panel background. The same fallback the Inspect
+// `style-box` declares; kept in one place for HTML Mode so the value
+// can't drift between surfaces.
+// TODO(design): promote to ds/colors.scss.
+
+@mixin low-emphasis-vars {
+  :global(.light) {
+    --low-emphasis-background: #fafafa;
+  }
+
+  :global(.default) {
+    --low-emphasis-background: #121214;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Segmented control (FORMAT html/jsx, STYLING css/tailwind, HEX·PX…).
+// Parameterized because the sidebar variant sits on a low-emphasis
+// panel and inverts the track/active backgrounds.
+
+@mixin segmented-label($tracking: 0.06em) {
+  @include eyebrow($tracking);
+
+  color: var(--color-foreground-secondary);
+}
+
+@mixin segmented-options($bg: var(--color-background-tertiary)) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xxs);
+  padding: var(--sp-xxs);
+  background: $bg;
+  border-radius: $br-6;
+}
+
+@mixin segmented-option($padding-inline: var(--sp-s)) {
+  @include t.use-typography("body-small");
+
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-foreground-secondary);
+  padding: var(--sp-xxs) $padding-inline;
+  border-radius: $br-4;
+  cursor: pointer;
+  text-transform: lowercase;
+
+  &:hover {
+    color: var(--color-foreground-primary);
+  }
+}
+
+@mixin segmented-option-active($bg: var(--color-background-primary), $with-shadow: true) {
+  background: $bg;
+  color: var(--color-foreground-primary);
+
+  @if $with-shadow {
+    box-shadow: 0 0 0 $b-1 var(--color-background-quaternary);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Syntax-highlighting palette — Dracula Dark / Alucard Light
+// (https://draculatheme.com/). Deliberately hardcoded: it is an external
+// reference palette that must stay theme-exact rather than track Penpot
+// UI tokens. Published as CSS custom properties so every consumer (the
+// export modal, the Components tab, the Design Tokens CSS view) gets the
+// same theme-aware colours by referencing `var(--hljs-…)`.
+//
+// Include ONCE from the HTML Mode root stylesheet (html_mode.scss).
+
+@mixin hljs-palette {
+  :root {
+    // Dracula Dark — defaults; Penpot defaults to dark.
+    --hljs-bg: #282a36; // Dracula background
+    --hljs-fg: #f8f8f2; // Dracula foreground (default text)
+    --hljs-keyword: #ff79c6; // pink — tags, keywords, CSS at-rules
+    --hljs-string: #f1fa8c; // yellow — strings, attribute values
+    --hljs-number: #bd93f9; // purple — numeric & length values
+    --hljs-property: #8be9fd; // cyan — CSS property names, JS keys
+    --hljs-attribute: #50fa7b; // green — HTML attribute names
+    --hljs-selector: #50fa7b; // green — CSS class / id / pseudo
+    --hljs-comment: #6272a4; // muted blue — comments
+    --hljs-punct: #f8f8f2; // foreground — punctuation, operators
+  }
+
+  // Light theme (Alucard) — the Dracula light variant. Same hue family
+  // but with enough chroma to read on a near-white backdrop.
+  :global(.light) {
+    --hljs-bg: #f8f8f2;
+    --hljs-fg: #1f1f1f;
+    --hljs-keyword: #a3144d; // deep magenta
+    --hljs-string: #836a00; // olive
+    --hljs-number: #644ac9; // rich purple
+    --hljs-property: #036a96; // dark cyan
+    --hljs-attribute: #14710a; // deep green
+    --hljs-selector: #14710a;
+    --hljs-comment: #635d85; // purple-grey
+    --hljs-punct: #1f1f1f;
+  }
+}
+
+// Maps highlight.js token classes to the shared `--hljs-*` palette.
+// Include inside the code container's selector. The `:global(...)`
+// wrappers are a deliberate nesting exception: the `.hljs-…` spans are
+// injected at runtime by highlight.js, so they live outside the CSS
+// module's local scope and can only be reached this way.
+
+@mixin hljs-syntax-theme {
+  :global(.hljs-comment),
+  :global(.hljs-quote) {
+    color: var(--hljs-comment);
+    font-style: italic;
+  }
+
+  :global(.hljs-keyword),
+  :global(.hljs-tag),
+  :global(.hljs-name),
+  :global(.hljs-selector-tag),
+  :global(.hljs-doctag),
+  :global(.hljs-meta),
+  :global(.hljs-literal) {
+    color: var(--hljs-keyword);
+  }
+
+  :global(.hljs-string),
+  :global(.hljs-attribute-value),
+  :global(.hljs-regexp),
+  :global(.hljs-template-tag),
+  :global(.hljs-template-variable) {
+    color: var(--hljs-string);
+  }
+
+  :global(.hljs-number),
+  :global(.hljs-symbol),
+  :global(.hljs-bullet) {
+    color: var(--hljs-number);
+  }
+
+  :global(.hljs-attr),
+  :global(.hljs-attribute) {
+    color: var(--hljs-attribute);
+  }
+
+  :global(.hljs-property),
+  :global(.hljs-built_in),
+  :global(.hljs-title),
+  :global(.hljs-class .hljs-title),
+  :global(.hljs-function .hljs-title),
+  :global(.hljs-params),
+  :global(.hljs-variable) {
+    color: var(--hljs-property);
+  }
+
+  :global(.hljs-selector-class),
+  :global(.hljs-selector-id),
+  :global(.hljs-selector-pseudo),
+  :global(.hljs-selector-attr) {
+    color: var(--hljs-selector);
+  }
+
+  :global(.hljs-punctuation),
+  :global(.hljs-operator) {
+    color: var(--hljs-punct);
+  }
+}
