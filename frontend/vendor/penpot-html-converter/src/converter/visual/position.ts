@@ -1,21 +1,51 @@
-import type { ShapeCommon } from '../../penpot.types';
+import type { GeomMatrix, ShapeCommon } from '../../penpot.types';
 import type { ConverterContext } from '../types';
-import { isIdentityMatrix, matrixToCss } from '../utils/transform';
+import {
+  isIdentityMatrix,
+  matrixToCss,
+  multiplyMatrices,
+  shapePageTransform,
+  pageTransformToCssMatrix,
+  IDENTITY_MATRIX,
+} from '../utils/transform';
 import { mergeStyles } from '../utils/style';
 import { px } from '../utils/css';
 import { decl } from '../decl';
 
-export function combinedTransformStyle(shape: ShapeCommon): string {
+// Penpot's `transform` matrix already ENCODES the rotation (plus any flips),
+// applied around the selrect center — which matches the CSS default
+// `transform-origin: 50% 50%` because the element box is the untransformed
+// selrect. Penpot's own CSS codegen emits the matrix alone; emitting
+// `rotate()` alongside it double-applies the rotation (and since the old
+// code negated the rotate, the two cancelled out — rotated shapes rendered
+// unrotated). The `rotation` value is only a fallback for shapes with no
+// matrix.
+//
+// Because Penpot stores transforms in PAGE space while CSS transforms NEST,
+// a shape inside a transformed container must emit the RELATIVE transform
+// `inv(T_container) ∘ T_shape` — the container passes `inv(T_container)`
+// down via `ctx._invParentTransform` (see frame.ts / group.ts). For shapes
+// whose visual content is already baked in page coordinates (paths, bools),
+// pass `ownTransformBaked: true` so only the counter-transform is emitted.
+export function combinedTransformStyle(
+  shape: ShapeCommon,
+  ctx?: Pick<ConverterContext, '_invParentTransform'>,
+  ownTransformBaked = false,
+): string {
   const hasRotation = !!shape.rotation;
   const hasMatrix = shape.transform !== undefined && !isIdentityMatrix(shape.transform);
+  const invParent = ctx?._invParentTransform;
 
-  if (!hasRotation && !hasMatrix) return '';
+  if (!invParent && !ownTransformBaked && !hasMatrix) {
+    if (!hasRotation) return '';
+    return decl.transform(`rotate(${shape.rotation ?? 0}deg)`);
+  }
 
-  const parts: string[] = [];
-  if (hasRotation) parts.push(`rotate(${-(shape.rotation ?? 0)}deg)`);
-  if (hasMatrix) parts.push(matrixToCss(shape.transform!));
+  const own = ownTransformBaked ? IDENTITY_MATRIX : shapePageTransform(shape);
+  const relative = invParent ? multiplyMatrices(invParent, own) : own;
+  if (isIdentityMatrix(relative)) return '';
 
-  return decl.transform(parts.join(' '));
+  return decl.transform(matrixToCss(pageTransformToCssMatrix(relative, shape)));
 }
 
 export function absolutePositionStyle(

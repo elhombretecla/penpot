@@ -16,16 +16,26 @@ export function linearGradientToStyle(gradient) {
     return decl.background(`linear-gradient(${normalizedAngle}deg, ${stops})`);
 }
 export function radialGradientToStyle(gradient) {
+    return decl.background(radialGradientValue(gradient));
+}
+// Penpot's radial gradient radius is the start→end handle distance, in
+// coordinates relative to the shape box. Omitting an explicit size makes
+// CSS fall back to `farthest-corner`, which ignores the handle entirely —
+// short handles rendered as if they spanned the whole shape. An ellipse
+// sized `r×100%` per axis matches Penpot's box-relative radius (exactly a
+// circle on square shapes, Penpot's box-stretched ellipse otherwise).
+function radialGradientValue(gradient) {
     const dx = gradient.endX - gradient.startX;
     const dy = gradient.endY - gradient.startY;
     const radius = Math.sqrt(dx * dx + dy * dy);
-    const centerX = Math.round(gradient.startX * 100);
-    const centerY = Math.round(gradient.startY * 100);
     const stops = gradient.stops.map(gradientStopToCss).join(', ');
     if (radius === 0) {
-        return decl.background(`radial-gradient(circle at 50% 50%, ${stops})`);
+        return `radial-gradient(circle at 50% 50%, ${stops})`;
     }
-    return decl.background(`radial-gradient(circle at ${centerX}% ${centerY}%, ${stops})`);
+    const centerX = Math.round(gradient.startX * 100);
+    const centerY = Math.round(gradient.startY * 100);
+    const r = Math.round(radius * 10000) / 100;
+    return `radial-gradient(ellipse ${r}% ${r}% at ${centerX}% ${centerY}%, ${stops})`;
 }
 export function solidFillToStyle(fill) {
     if (!fill.fillColor)
@@ -55,14 +65,7 @@ function gradientToImageValue(gradient) {
         const normalizedAngle = ((angleDeg % 360) + 360) % 360;
         return `linear-gradient(${normalizedAngle}deg, ${stops})`;
     }
-    const dx = gradient.endX - gradient.startX;
-    const dy = gradient.endY - gradient.startY;
-    const radius = Math.sqrt(dx * dx + dy * dy);
-    const cx = Math.round(gradient.startX * 100);
-    const cy = Math.round(gradient.startY * 100);
-    return radius === 0
-        ? `radial-gradient(circle at 50% 50%, ${stops})`
-        : `radial-gradient(circle at ${cx}% ${cy}%, ${stops})`;
+    return radialGradientValue(gradient);
 }
 function solidToImageValue(fill) {
     const color = hexOpacityToCss(fill.fillColor, fill.fillOpacity);

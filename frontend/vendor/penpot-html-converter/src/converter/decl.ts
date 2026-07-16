@@ -89,6 +89,16 @@ export const decl = {
       | 'space-around'
       | 'space-evenly',
   ) => fmt('align-items', v),
+  alignContent: (
+    v:
+      | 'flex-start'
+      | 'flex-end'
+      | 'center'
+      | 'stretch'
+      | 'space-between'
+      | 'space-around'
+      | 'space-evenly',
+  ) => fmt('align-content', v),
   gap: (v: number) => fmt('gap', px(v)),
   rowGap: (v: number) => fmt('row-gap', px(v)),
   columnGap: (v: number) => fmt('column-gap', px(v)),

@@ -24,6 +24,7 @@ export declare const decl: {
     readonly flexWrap: (v: "wrap" | "nowrap" | "wrap-reverse") => string;
     readonly justifyContent: (v: "flex-start" | "flex-end" | "center" | "space-between" | "space-around" | "space-evenly" | "stretch") => string;
     readonly alignItems: (v: "flex-start" | "flex-end" | "center" | "stretch" | "baseline" | "space-between" | "space-around" | "space-evenly") => string;
+    readonly alignContent: (v: "flex-start" | "flex-end" | "center" | "stretch" | "space-between" | "space-around" | "space-evenly") => string;
     readonly gap: (v: number) => string;
     readonly rowGap: (v: number) => string;
     readonly columnGap: (v: number) => string;

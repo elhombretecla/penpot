@@ -1,10 +1,10 @@
 import { tag } from '../utils/html';
 import { mergeStyles } from '../utils/style';
 import { decl } from '../decl';
-import { resolvePositionOutput } from '../visual/position';
+import { resolvePositionOutput, combinedTransformStyle } from '../visual/position';
 import { blendModeToStyle, opacityToStyle, hiddenToStyle } from '../visual/blend';
 import { blurToStyle } from '../visual/blur';
-import { shadowsToStyle } from '../visual/shadows';
+import { shadowsToFilterStyle } from '../visual/shadows';
 import { radiusToStyle } from '../visual/radius';
 import { hexOpacityToCss } from '../utils/color';
 function buildMarkerDef(capType, color, id) {
@@ -193,9 +193,13 @@ export function renderPath(shape, ctx) {
     };
     const posStyle = resolvePositionOutput(effectiveShape, ctx);
     // Path coordinates in `content` are already in page-absolute space — rotation
-    // and matrix are baked into the path data. Applying transform styles would
-    // double-transform and distort the shape. Only apply visual styles (not transform).
-    const baseNoTransform = mergeStyles(opacityToStyle(shape.opacity), blendModeToStyle(shape.blendMode), hiddenToStyle(shape.hidden), blurToStyle(shape.blur), radiusToStyle(shape), shadowsToStyle(shape.shadow));
+    // and matrix are baked into the path data. Applying the shape's own transform
+    // would double-transform and distort it; only a transformed ancestor's
+    // counter-transform is emitted (combinedTransformStyle with baked=true).
+    const baseNoTransform = mergeStyles(opacityToStyle(shape.opacity), blendModeToStyle(shape.blendMode), hiddenToStyle(shape.hidden), blurToStyle(shape.blur), radiusToStyle(shape), 
+    // drop-shadow() follows the painted path; box-shadow would draw a
+    // rectangle around the (transparent) svg viewport box.
+    shadowsToFilterStyle(shape.shadow), combinedTransformStyle(effectiveShape, ctx, true));
     // The svg presentation attribute `overflow="visible"` is overridden by the
     // UA stylesheet `svg:not(:root) { overflow: hidden }` (presentation attrs
     // have specificity 0). Setting it inline ensures stroke/marker painted

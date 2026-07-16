@@ -18,6 +18,24 @@ import {
 import { gridTracksToStyle, gridCellStyle, findCellForShape } from '../layout/grid';
 import { decl } from '../decl';
 import { renderShape } from './dispatch';
+import { isIdentityMatrix, invertMatrix, shapePageTransform } from '../utils/transform';
+
+// The inverse page transform this container's CHILDREN must compose with
+// (see ConverterContext._invParentTransform). Always derived from the
+// container alone: its own emitted transform already composes with any
+// transformed ancestor, so the children's CSS environment equals exactly
+// the container's page transform.
+export function invTransformForChildren(shape: {
+  transform?: import('../../penpot.types').GeomMatrix;
+  x?: number | null;
+  y?: number | null;
+  width?: number | null;
+  height?: number | null;
+  selrect?: { x: number; y: number; width: number; height: number };
+}): import('../../penpot.types').GeomMatrix | undefined {
+  if (!shape.transform || isIdentityMatrix(shape.transform)) return undefined;
+  return invertMatrix(shapePageTransform(shape));
+}
 
 function shadowBorderRadiusFromChildren(shape: FrameShape, children: Shape[]): string {
   if (!shape.shadow?.length) return '';
@@ -145,6 +163,7 @@ export function renderFrame(
     const frameOffsetY = shape.y ?? 0;
     const orderedChildren = isReverseDir ? [...children] : [...children].reverse();
     const parentWraps = frameWillWrap(shape, children);
+    const invSelf = invTransformForChildren(shape);
     inner = orderedChildren
       .map((child) => {
         // Absolute flex items are removed from flex flow; `flex: 1` / `height: 100%`
@@ -155,7 +174,16 @@ export function renderFrame(
         const autoW = isAbsolute || child.layoutItemHSizing === 'auto';
         const autoH = isAbsolute || child.layoutItemVSizing === 'auto';
         const sizingStyle = isAbsolute ? '' : layoutItemSizingStyle(child, shape, parentWraps);
+        // Flex items default to `min-width/min-height: auto` (the content
+        // minimum), so a child whose browser-measured content is a pixel
+        // wider than Penpot's measurement refuses to fit the size Penpot
+        // laid out — rows that fit exactly in the workspace overflow and
+        // wrap one item early. Zeroing the implicit minimum keeps the
+        // emitted geometry authoritative; declared layoutItemMin* values
+        // (emitted later in this merge) still win via last-wins dedup.
+        const minResetStyle = isAbsolute ? '' : 'min-width: 0; min-height: 0;';
         const itemStyle = mergeStyles(
+          minResetStyle,
           sizingStyle,
           layoutItemMarginStyle(child),
           layoutItemAlignSelfStyle(child),
@@ -165,6 +193,7 @@ export function renderFrame(
         );
         const flexCtx: ConverterContext = {
           ...ctx,
+          _invParentTransform: invSelf,
           _parentIsLayout: true,
           _parentIsLayoutAutoW: autoW || undefined,
           _parentIsLayoutAutoH: autoH || undefined,
@@ -180,6 +209,7 @@ export function renderFrame(
         const cellStyle = cell ? gridCellStyle(cell) : '';
         const gridCtx: ConverterContext = {
           ...ctx,
+          _invParentTransform: invTransformForChildren(shape),
           _forceRelative: true,
           _parentLayoutItemStyles: cellStyle || undefined,
         };
@@ -189,6 +219,7 @@ export function renderFrame(
   } else {
     const childCtx: ConverterContext = {
       ...ctx,
+      _invParentTransform: invTransformForChildren(shape),
       _isCanvasTopLevel: false,
       _isChildOfRoot: isRoot,
       _forceRelative: false,

@@ -4,6 +4,7 @@ import { resolvePositionOutput } from '../visual/position';
 import { baseStyles } from '../visual/base';
 import { hexOpacityToCss } from '../utils/color';
 import { renderShape } from './dispatch';
+import { invTransformForChildren } from './frame';
 function isSvgOnlyGroup(children) {
     const visible = children.filter((c) => !c.hidden);
     if (visible.length === 0)
@@ -87,7 +88,10 @@ function renderGroupAsSvg(shape, children, ctx) {
     const vy = shape.y;
     const vw = shape.width;
     const vh = shape.height;
-    const base = baseStyles(shape, ctx);
+    // The child paths' `content` is baked in page coordinates (transforms
+    // included), so the svg must not re-apply the group's own matrix — only
+    // a transformed ancestor's counter-transform.
+    const base = baseStyles(shape, ctx, { shadows: 'filter', transform: false });
     const posStyle = resolvePositionOutput(shape, ctx);
     const style = mergeStyles(posStyle, base);
     const inner = children
@@ -116,7 +120,10 @@ export function renderGroup(shape, children, objects, ctx) {
     if (isSvgOnlyGroup(children)) {
         return renderGroupAsSvg(shape, children, ctx);
     }
-    const base = baseStyles(shape, ctx);
+    // A group's own div paints nothing (its children carry the fills), so a
+    // box-shadow would outline an invisible rectangle. drop-shadow() shadows
+    // the composited children instead, matching the workspace render.
+    const base = baseStyles(shape, ctx, { shadows: 'filter' });
     const posStyle = resolvePositionOutput(shape, ctx);
     const maskStyle = shape.maskedGroup ? 'overflow: hidden;' : '';
     // Group children render with position: absolute offset by the group's x/y.
@@ -129,6 +136,7 @@ export function renderGroup(shape, children, objects, ctx) {
     const style = mergeStyles(posStyle, extraPositionStyle, base, maskStyle);
     const childCtx = {
         ...ctx,
+        _invParentTransform: invTransformForChildren(shape),
         _isCanvasTopLevel: false,
         _forceRelative: false,
         _parentIsLayout: false,

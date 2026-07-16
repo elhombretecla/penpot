@@ -53,6 +53,7 @@ export const decl = {
     flexWrap: (v) => fmt('flex-wrap', v),
     justifyContent: (v) => fmt('justify-content', v),
     alignItems: (v) => fmt('align-items', v),
+    alignContent: (v) => fmt('align-content', v),
     gap: (v) => fmt('gap', px(v)),
     rowGap: (v) => fmt('row-gap', px(v)),
     columnGap: (v) => fmt('column-gap', px(v)),

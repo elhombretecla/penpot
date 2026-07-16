@@ -156,7 +156,7 @@ function firstNonEmptyLeaf(
 
 export function renderText(shape: TextShape, ctx: ConverterContext): string {
   collectTextFonts(shape, ctx);
-  const base = baseStyles(shape, ctx);
+  const base = baseStyles(shape, ctx, { shadows: 'text' });
   const posStyle = resolvePositionOutput(shape, ctx);
 
   const sizeParts: string[] = [];
@@ -198,10 +198,6 @@ export function renderText(shape: TextShape, ctx: ConverterContext): string {
       )
     : '';
 
-  const style = ctx._parentIsLayout
-    ? mergeStyles(posStyle, noWrapStyle, verticalAlignStyle, typographyStyle, base)
-    : mergeStyles(posStyle, sizeStyle, noWrapStyle, verticalAlignStyle, typographyStyle, base);
-
   const fillTokenName = shape.appliedTokens?.fill;
 
   // Resolve a fallback colour for leaves that don't carry their own
@@ -220,6 +216,28 @@ export function renderText(shape: TextShape, ctx: ConverterContext): string {
     ? hexOpacityToCss(firstStroke.strokeColor, firstStroke.strokeOpacity)
     : undefined;
   const fallbackColor = shapeFillColor ?? strokeFallbackColor;
+
+  // Text strokes (outlined text) approximate to -webkit-text-stroke: the
+  // stroke follows the glyphs instead of the text box. Only emitted when
+  // the shape also has a fill — for outline-only text the stroke colour is
+  // already used as the glyph colour via `fallbackColor`, which reads far
+  // closer to Penpot's output than hollow glyphs with a hairline.
+  const textStrokeStyle =
+    strokeFallbackColor && shapeFillColor
+      ? `-webkit-text-stroke: ${firstStroke!.strokeWidth ?? 1}px ${strokeFallbackColor};`
+      : '';
+
+  const style = ctx._parentIsLayout
+    ? mergeStyles(posStyle, noWrapStyle, verticalAlignStyle, typographyStyle, textStrokeStyle, base)
+    : mergeStyles(
+        posStyle,
+        sizeStyle,
+        noWrapStyle,
+        verticalAlignStyle,
+        typographyStyle,
+        textStrokeStyle,
+        base,
+      );
 
   let inner = '';
   if (shape.content) {

@@ -7,7 +7,10 @@ import { baseStyles } from '../visual/base';
 import { hexOpacityToCss } from '../utils/color';
 
 export function renderBool(shape: BoolShape, ctx: ConverterContext): string {
-  const base = baseStyles(shape, ctx);
+  // Like paths, bool `content` coordinates are already transformed —
+  // emitting the transform matrix would double-rotate. Shadows follow the
+  // painted silhouette via drop-shadow(), not the transparent svg box.
+  const base = baseStyles(shape, ctx, { shadows: 'filter', transform: false });
 
   const fills = shape.fills ?? [];
   const strokes = shape.strokes ?? [];

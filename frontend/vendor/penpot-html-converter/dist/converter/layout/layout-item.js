@@ -1,4 +1,5 @@
 import { mergeStyles } from '../utils/style';
+import { isIdentityMatrix } from '../utils/transform';
 import { decl } from '../decl';
 export function layoutItemSizingStyle(shape, parent, parentWraps = false) {
     const isRowDir = parent.layoutFlexDir === 'row' ||
@@ -68,24 +69,50 @@ export function layoutItemSizingStyle(shape, parent, parentWraps = false) {
         parts.push(decl.height(h));
         vIsExplicit = true;
     }
-    // Fix-sized children should not shrink on the main axis. Without this,
-    // an item with `width: 36px` + `margin: 30px` inside a flex-row with a
-    // 36px content area (padding 30 on a 96 container) hits −60px free space
-    // and the default `flex-shrink: 1` collapses the item to min-content (0),
-    // making it invisible.
-    const mainExplicit = isRowDir ? hIsExplicit : vIsExplicit;
-    if (mainExplicit)
+    // Penpot's layout engine NEVER shrinks children to make them fit — an
+    // over-full container simply overflows (the design scrolls). CSS defaults
+    // to `flex-shrink: 1`, which compresses fix/hug children of an over-full
+    // column/row (screens taller than their board squeeze every section, and
+    // with min-width/height reset to 0 there is no content-minimum backstop
+    // left). Emit `flex-shrink: 0` for every item whose MAIN axis is not
+    // `fill` — fill items manage shrinking through their `flex` shorthand.
+    const mainSizing = isRowDir ? hSizing : vSizing;
+    if (mainSizing !== 'fill')
         parts.push(decl.flexShrink(0));
     return parts.join(' ');
 }
+// A transformed flex child occupies its ROTATED bounding box in Penpot's
+// layout, but the emitted element keeps its untransformed selrect dims (the
+// CSS transform is visual-only and doesn't affect flow). Compensate with
+// per-axis margins of (AABB - box)/2 — negative when the box is wider than
+// its AABB — so the flex footprint matches Penpot's while the transform
+// still rotates about the element (= slot) center.
+function rotatedFootprintDelta(shape) {
+    const m = shape.transform;
+    if (!m || isIdentityMatrix(m))
+        return null;
+    if (shape.layoutItemAbsolute)
+        return null;
+    const w = shape.width ?? shape.selrect?.width ?? 0;
+    const h = shape.height ?? shape.selrect?.height ?? 0;
+    const bw = Math.abs(m.a) * w + Math.abs(m.c) * h;
+    const bh = Math.abs(m.b) * w + Math.abs(m.d) * h;
+    const dx = (bw - w) / 2;
+    const dy = (bh - h) / 2;
+    if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01)
+        return null;
+    return { dx, dy };
+}
 export function layoutItemMarginStyle(shape) {
     const margin = shape.layoutItemMargin;
-    if (!margin)
+    const delta = rotatedFootprintDelta(shape);
+    if (!margin && !delta)
         return '';
-    const m1 = margin.m1 ?? 0;
-    const m2 = margin.m2 ?? 0;
-    const m3 = margin.m3 ?? 0;
-    const m4 = margin.m4 ?? 0;
+    const round = (n) => Math.round(n * 100) / 100;
+    const m1 = round((margin?.m1 ?? 0) + (delta?.dy ?? 0));
+    const m2 = round((margin?.m2 ?? 0) + (delta?.dx ?? 0));
+    const m3 = round((margin?.m3 ?? 0) + (delta?.dy ?? 0));
+    const m4 = round((margin?.m4 ?? 0) + (delta?.dx ?? 0));
     if (m1 === m2 && m2 === m3 && m3 === m4) {
         return decl.margin(m1);
     }

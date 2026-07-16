@@ -30,6 +30,7 @@
 export function mergeStyles(...parts) {
     const boxShadowValues = [];
     const transformValues = [];
+    const filterValues = [];
     const order = [];
     const valueByProp = new Map();
     for (const part of parts) {
@@ -53,6 +54,13 @@ export function mergeStyles(...parts) {
                 transformValues.push(value);
                 continue;
             }
+            if (prop === 'filter') {
+                // Filters compose as a space-separated function list — a shape can
+                // carry both a layer blur (`blur()`) and shaped shadows
+                // (`drop-shadow()`); last-wins dedup would silently drop one.
+                filterValues.push(value);
+                continue;
+            }
             if (valueByProp.has(prop)) {
                 // Move the override to the end so the cascade is visible.
                 const idx = order.indexOf(prop);
@@ -69,6 +77,9 @@ export function mergeStyles(...parts) {
     }
     if (transformValues.length > 0) {
         out.push(`transform: ${transformValues.join(' ')};`);
+    }
+    if (filterValues.length > 0) {
+        out.push(`filter: ${filterValues.join(' ')};`);
     }
     return out.join(' ');
 }

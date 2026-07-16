@@ -29,10 +29,25 @@ export function solidStrokeToStyle(
     return decl.boxShadow(`0 0 0 ${width}px ${color}`);
   }
 
-  // inner and center alignment — border is drawn inside the element's dimensions
-  // (box-sizing: border-box keeps it within bounds).
+  // Penpot strokes never consume layout space — they paint over the shape's
+  // geometry. A CSS `border` (with the document's box-sizing: border-box)
+  // shrinks the content box instead, shifting flex/grid children inwards and
+  // breaking layouts that Penpot measured without the stroke. Solid strokes
+  // therefore map to layout-neutral box-shadow rings (they also follow
+  // border-radius). Dashed/dotted strokes can't be expressed as a shadow, so
+  // they keep the border mapping and accept the small content-box deviation.
   const borderStyle = stroke.strokeStyle
     ? (STROKE_STYLE_VALUE[stroke.strokeStyle] ?? 'solid')
     : 'solid';
-  return decl.border(`${width}px ${borderStyle} ${color}`);
+  if (borderStyle !== 'solid') {
+    return decl.border(`${width}px ${borderStyle} ${color}`);
+  }
+
+  if (alignment === 'inner') {
+    return decl.boxShadow(`inset 0 0 0 ${width}px ${color}`);
+  }
+
+  // center alignment: half the width inside, half outside.
+  const half = width / 2;
+  return decl.boxShadow(`inset 0 0 0 ${half}px ${color}, 0 0 0 ${half}px ${color}`);
 }

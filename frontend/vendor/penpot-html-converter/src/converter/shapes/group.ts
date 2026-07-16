@@ -6,6 +6,7 @@ import { resolvePositionOutput } from '../visual/position';
 import { baseStyles } from '../visual/base';
 import { hexOpacityToCss } from '../utils/color';
 import { renderShape } from './dispatch';
+import { invTransformForChildren } from './frame';
 
 function isSvgOnlyGroup(children: Shape[]): boolean {
   const visible = children.filter((c) => !c.hidden);
@@ -106,7 +107,10 @@ function renderGroupAsSvg(shape: GroupShape, children: Shape[], ctx: ConverterCo
   const vw = shape.width;
   const vh = shape.height;
 
-  const base = baseStyles(shape, ctx);
+  // The child paths' `content` is baked in page coordinates (transforms
+  // included), so the svg must not re-apply the group's own matrix — only
+  // a transformed ancestor's counter-transform.
+  const base = baseStyles(shape, ctx, { shadows: 'filter', transform: false });
   const posStyle = resolvePositionOutput(shape, ctx);
 
   const style = mergeStyles(posStyle, base);
@@ -147,7 +151,10 @@ export function renderGroup(
     return renderGroupAsSvg(shape, children, ctx);
   }
 
-  const base = baseStyles(shape, ctx);
+  // A group's own div paints nothing (its children carry the fills), so a
+  // box-shadow would outline an invisible rectangle. drop-shadow() shadows
+  // the composited children instead, matching the workspace render.
+  const base = baseStyles(shape, ctx, { shadows: 'filter' });
   const posStyle = resolvePositionOutput(shape, ctx);
   const maskStyle = shape.maskedGroup ? 'overflow: hidden;' : '';
 
@@ -163,6 +170,7 @@ export function renderGroup(
 
   const childCtx: ConverterContext = {
     ...ctx,
+    _invParentTransform: invTransformForChildren(shape),
     _isCanvasTopLevel: false,
     _forceRelative: false,
     _parentIsLayout: false,

@@ -16,6 +16,12 @@ export interface ConverterContext {
     resolveImageUrl(id: Uuid): string;
     /** Optional prefix for image URLs */
     baseUrl?: string;
+    /**
+     * @internal Inverse of the nearest transformed ancestor's page-space
+     * transform. Children emit `inv(T_parent) ∘ T_own` so nested CSS
+     * transforms compose back to Penpot's page-space geometry.
+     */
+    _invParentTransform?: import('../penpot.types').GeomMatrix;
     /** @internal When true, shape renderers skip absolute positioning (parent is flex/grid) */
     _parentIsLayout?: boolean;
     /** @internal When true alongside _parentIsLayout, the child must emit its own explicit width instead of w-full (auto h-sizing) */

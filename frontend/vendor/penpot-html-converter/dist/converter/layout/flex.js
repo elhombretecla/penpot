@@ -77,6 +77,16 @@ export function flexContainerStyle(shape, children = []) {
     // stored positions over the flag.
     if (frameWillWrap(shape, children)) {
         parts.push(decl.flexWrap('wrap'));
+        // align-content distributes the wrapped lines. Penpot's default
+        // ('stretch', also used when the property is absent) matches the CSS
+        // initial value, so only non-stretch values need to be emitted.
+        const alignContent = shape
+            .layoutAlignContent;
+        const alignContentValue = alignContent && alignContent !== 'stretch'
+            ? JUSTIFY_CONTENT_VALUE[alignContent]
+            : undefined;
+        if (alignContentValue)
+            parts.push(decl.alignContent(alignContentValue));
     }
     return parts.join(' ');
 }
