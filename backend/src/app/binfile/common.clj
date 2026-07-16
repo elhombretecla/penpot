@@ -877,5 +877,10 @@
   (let [library-ids (->> (get-file-libraries conn (:id file))
                          (map :id)
                          (cons (:id file)))
-        load-fn     #(get-file cfg % :migrate? false)]
+        ;; NOTE: libraries are loaded with :realize? true because they
+        ;; can be accessed later (ex: on file validation) under a
+        ;; pmap/*load-fn* binding pointing to a different file; lazy
+        ;; pointer maps deref'd there would query fragments with the
+        ;; wrong file-id and raise :fragment-not-found
+        load-fn     #(get-file cfg % :migrate? false :realize? true)]
     (weak/loadable-weak-value-map library-ids load-fn {id file})))
