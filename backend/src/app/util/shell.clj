@@ -2,7 +2,7 @@
 ;; License, v. 2.0. If a copy of the MPL was not distributed with this
 ;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ;;
-;; Copyright (c) KALEIDOS INC Sucursal en España SL
+;; Copyright (c) KALEIDOS SUBSIDIARY SL
 
 (ns app.util.shell
   "A penpot specific, modern api for executing external (shell)
@@ -65,7 +65,6 @@
   (assert (every? string? cmd) "the command should be a vector of strings")
 
   (let [executor (::wrk/executor system)
-        _        (assert (some? executor) "executor is required, check ::wrk/executor")
         full-cmd (cond->> cmd
                    (seq prlimit)
                    (into (prlimit-cmd prlimit)))
@@ -73,6 +72,9 @@
         env-map  (.environment ^ProcessBuilder builder)
         _        (reduce-kv set-env env-map env)
         process  (.start builder)]
+
+    (when-not executor
+      (throw (IllegalArgumentException. "invalid system/cfg provided, missing ::wrk/executor")))
 
     (if in
       (px/run! executor

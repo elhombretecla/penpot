@@ -1,6 +1,6 @@
 import { expect } from '../framework/expect';
 import { describe, test } from '../framework/registry';
-import type { Text } from '@penpot/plugin-types';
+import type { Board, Text } from '@penpot/plugin-types';
 import type { TestContext } from '../framework/types';
 import { PNG_1X1 } from './fixtures';
 
@@ -32,6 +32,24 @@ describe('Library', () => {
 
   test('library context exposes connected libraries', (ctx) => {
     expect(Array.isArray(ctx.penpot.library.connected)).toBe(true);
+  });
+
+  // The Library object itself carries plugin data (it extends PluginData),
+  // stored on the underlying file. Exercised on the local library; the
+  // connected-library case (writing to a shared library's file/assets) shares
+  // the same code path but can't be fixtured here (connecting a library hangs).
+  test('local library stores plugin data', (ctx) => {
+    const lib = ctx.penpot.library.local;
+    lib.setPluginData('k', 'v');
+    expect(lib.getPluginData('k')).toBe('v');
+    expect(lib.getPluginDataKeys()).toContain('k');
+  });
+
+  test('local library stores shared plugin data', (ctx) => {
+    const lib = ctx.penpot.library.local;
+    lib.setSharedPluginData('ns', 'k', 'v');
+    expect(lib.getSharedPluginData('ns', 'k')).toBe('v');
+    expect(lib.getSharedPluginDataKeys('ns')).toContain('k');
   });
 
   test('library elements expose a libraryId', (ctx) => {
@@ -136,6 +154,13 @@ describe('Library', () => {
       expect(color.getPluginData('k')).toBe('v');
       expect(color.getPluginDataKeys()).toContain('k');
     });
+
+    test('color shared plugin data round-trips', (ctx) => {
+      const color = ctx.penpot.library.local.createColor();
+      color.setSharedPluginData('ns', 'k', 'v');
+      expect(color.getSharedPluginData('ns', 'k')).toBe('v');
+      expect(color.getSharedPluginDataKeys('ns')).toContain('k');
+    });
   });
 
   describe('Typographies', () => {
@@ -168,6 +193,13 @@ describe('Library', () => {
       typo.setPluginData('k', 'v');
       expect(typo.getPluginData('k')).toBe('v');
       expect(typo.getPluginDataKeys()).toContain('k');
+    });
+
+    test('typography shared plugin data round-trips', (ctx) => {
+      const typo = ctx.penpot.library.local.createTypography();
+      typo.setSharedPluginData('ns', 'k', 'v');
+      expect(typo.getSharedPluginData('ns', 'k')).toBe('v');
+      expect(typo.getSharedPluginDataKeys('ns')).toContain('k');
     });
 
     test('typography fontFamily and fontId round-trip', (ctx) => {
@@ -256,6 +288,15 @@ describe('Library', () => {
       expect(comp.getPluginDataKeys()).toContain('k');
     });
 
+    test('component shared plugin data round-trips', (ctx) => {
+      const rect = ctx.penpot.createRectangle();
+      ctx.board.appendChild(rect);
+      const comp = ctx.penpot.library.local.createComponent([rect]);
+      comp.setSharedPluginData('ns', 'k', 'v');
+      expect(comp.getSharedPluginData('ns', 'k')).toBe('v');
+      expect(comp.getSharedPluginDataKeys('ns')).toContain('k');
+    });
+
     test('component instance and mainInstance return shapes', (ctx) => {
       const rect = ctx.penpot.createRectangle();
       ctx.board.appendChild(rect);
@@ -268,6 +309,60 @@ describe('Library', () => {
       const instance = comp.instance();
       expect(instance).toBeDefined();
       expect(typeof instance.id).toBe('string');
+    });
+
+    // Reported (via MCP): create a page-root shape (rectangle / ellipse / text),
+    // save it as a component, then use it from Assets — the component root was
+    // said to be a plain shape instead of a board/component. This does not
+    // reproduce: a lone page-root shape is wrapped in a board and that board
+    // becomes the component (main-instance) root. Pin the invariant for the
+    // exact repro.
+    test('createComponent wraps a page-root shape in a board component root', (ctx) => {
+      // A genuine page-root shape: created but NOT placed inside any board.
+      const rect = ctx.penpot.createRectangle();
+      const comp = ctx.penpot.library.local.createComponent([rect]);
+
+      const main = comp.mainInstance() as Board;
+      expect(main.type).toBe('board');
+      expect(main.isComponentRoot()).toBeTruthy();
+      expect(main.isComponentMainInstance()).toBeTruthy();
+      expect(main.children.some((c) => c.id === rect.id)).toBe(true);
+
+      const errors = ctx.penpot.currentFile?.validate() ?? [];
+      expect(errors.map((e) => e.code)).toEqual([]);
+
+      // The generated main instance lands at the page root (outside ctx.board);
+      // tuck it under the scratch board so teardown removes it.
+      ctx.board.appendChild(main);
+    });
+
+    // createComponent must reject inputs that cannot form a component rather
+    // than succeeding silently or crashing. Both cases below currently surface
+    // an INTERNAL assertion ("Assert failed: (uuid? id)"): the operation is a
+    // no-op, so the returned LibraryComponent proxy is built from a nil id. It
+    // should be a clean rejection (or a null return) instead — and in a release
+    // build, where the assertion is elided, the caller gets a broken component
+    // proxy pointing at nothing. The file must stay valid regardless.
+    test('createComponent with no shapes is rejected', (ctx) => {
+      expect(() => ctx.penpot.library.local.createComponent([])).toThrow();
+      const errors = ctx.penpot.currentFile?.validate() ?? [];
+      expect(errors.map((e) => e.code)).toEqual([]);
+    });
+
+    test('createComponent from a shape inside a component copy is rejected', (ctx) => {
+      const rect = ctx.penpot.createRectangle();
+      ctx.board.appendChild(rect);
+      const source = ctx.penpot.library.local.createComponent([rect]);
+      const copy = source.instance() as Board;
+      ctx.board.appendChild(copy);
+      const copyChild = copy.children[0];
+      expect(copyChild).toBeDefined();
+
+      expect(() =>
+        ctx.penpot.library.local.createComponent([copyChild]),
+      ).toThrow();
+      const errors = ctx.penpot.currentFile?.validate() ?? [];
+      expect(errors.map((e) => e.code)).toEqual([]);
     });
   });
 });

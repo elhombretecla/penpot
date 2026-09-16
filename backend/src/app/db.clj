@@ -2,7 +2,7 @@
 ;; License, v. 2.0. If a copy of the MPL was not distributed with this
 ;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ;;
-;; Copyright (c) KALEIDOS INC Sucursal en España SL
+;; Copyright (c) KALEIDOS SUBSIDIARY SL
 
 (ns app.db
   (:refer-clojure :exclude [get run!])
@@ -31,8 +31,8 @@
    com.zaxxer.hikari.HikariDataSource
    com.zaxxer.hikari.HikariPoolMXBean
    com.zaxxer.hikari.metrics.prometheus.PrometheusMetricsTrackerFactory
-   io.whitfin.siphash.SipHasher
-   io.whitfin.siphash.SipHasherContainer
+   io.whitfin.siphash.SipHash
+   io.whitfin.siphash.SipHashContext
    java.io.InputStream
    java.io.OutputStream
    java.sql.Connection
@@ -331,7 +331,10 @@
 
   This expands to a single SQL statement with placeholders for every
   value being inserted. For large data sets, this may exceed the limit
-  of sql string size and/or number of parameters."
+  of sql string size and/or number of parameters.
+
+  See `insert-many-chunked!` for a safe alternative that automatically
+  partitions rows to stay within the parameter limit."
   [ds table cols rows & {:as opts}]
   (let [conn (get-connectable ds)
         sql  (sql/insert-many table cols rows opts)
@@ -340,6 +343,24 @@
                (into default-insert-opts (rename-opts opts)))
         opts (update opts :return-keys boolean)]
     (jdbc/execute! conn sql opts)))
+
+(def ^:private default-max-params
+  "PostgreSQL PreparedStatement parameter limit."
+  65535)
+
+(defn insert-many-chunked!
+  "Like `insert-many!` but partitions rows into chunks that stay within
+  PostgreSQL's 65,535 PreparedStatement parameter limit.
+
+  The chunk size is computed as `floor(max-params / num-columns)`,
+  so callers do not need to calculate it. All chunks execute within
+  the same transaction when called inside `tx-run!`."
+  [ds table cols rows & {:keys [max-params] :as opts
+                         :or   {max-params default-max-params}}]
+  (let [chunk-size (quot max-params (count cols))
+        opts       (dissoc opts :max-params)]
+    (doseq [chunk (partition-all chunk-size rows)]
+      (apply insert-many! ds table cols chunk (mapcat identity opts)))))
 
 (defn update!
   "A helper that build an UPDATE SQL statement and executes it.
@@ -680,12 +701,12 @@
 ;; --- Locks
 
 (def ^:private siphash-state
-  (SipHasher/container
-   (uuid/get-bytes uuid/zero)))
+  (SipHash/context
+    (uuid/get-bytes uuid/zero)))
 
 (defn uuid->hash-code
   [o]
-  (.hash ^SipHasherContainer siphash-state
+  (.hash ^SipHashContext siphash-state
          ^bytes (uuid/get-bytes o)))
 
 (defn- xact-check-param

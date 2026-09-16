@@ -2,7 +2,7 @@
 ;; License, v. 2.0. If a copy of the MPL was not distributed with this
 ;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ;;
-;; Copyright (c) KALEIDOS INC Sucursal en España SL
+;; Copyright (c) KALEIDOS SUBSIDIARY SL
 
 (ns app.main.ui.workspace.sidebar.options.menus.layout-container
   (:require-macros [app.main.style :as stl])
@@ -1186,13 +1186,14 @@
         (mf/use-fn
          (mf/deps ids)
          (fn [multiple? type val]
-           (let [val (mth/finite val 0)]
+           (let [val (mth/finite (d/parse-double val 0) 0)]
              (cond
                ^boolean multiple?
                (st/emit! (dwsl/update-layout ids {:layout-gap {:row-gap val :column-gap val}}))
 
                (some? type)
                (st/emit! (dwsl/update-layout ids {:layout-gap {type val}}))))))
+
 
         ;; Padding
         on-padding-type-change
@@ -1205,13 +1206,17 @@
         (mf/use-fn
          (mf/deps ids)
          (fn [type prop val]
-           (let [val (mth/finite val 0)]
+           (let [val (mth/finite (d/parse-double val 0) 0)]
              (cond
                (and (= type :simple) (or (= prop :p1) (= prop #{:p1 :p3})))
                (st/emit! (dwsl/update-layout ids {:layout-padding {:p1 val :p3 val}}))
 
                (and (= type :simple) (or (= prop :p2) (= prop #{:p2 :p4})))
                (st/emit! (dwsl/update-layout ids {:layout-padding {:p2 val :p4 val}}))
+
+               (and (= type :multiple) (some? prop))
+               (st/emit! (dwsl/update-layout ids {:layout-padding-type :multiple
+                                                  :layout-padding {prop val}}))
 
                (some? prop)
                (st/emit! (dwsl/update-layout ids {:layout-padding {prop val}}))))))
@@ -1427,7 +1432,7 @@
         (mf/use-fn
          (mf/deps ids)
          (fn [multiple? type val]
-           (let [val (mth/finite val 0)]
+           (let [val (mth/finite (d/parse-double val 0) 0)]
              (if multiple?
                (st/emit! (dwsl/update-layout ids {:layout-gap {:row-gap val :column-gap val}}))
                (st/emit! (dwsl/update-layout ids {:layout-gap {type val}}))))))
@@ -1441,7 +1446,7 @@
 
         on-padding-change
         (fn [type prop val]
-          (let [val (mth/finite val 0)]
+          (let [val (mth/finite (d/parse-double val 0) 0)]
             (cond
               (and (= type :simple) (= prop :p1))
               (st/emit! (dwsl/update-layout ids {:layout-padding {:p1 val :p3 val}}))
